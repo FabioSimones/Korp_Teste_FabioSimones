@@ -34,16 +34,16 @@ public class InventoryDbContextConnectivityTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task DbContext_Has_No_Domain_Entities_Yet()
+    public async Task DbContext_Has_Product_Entity_Mapped()
     {
         // Arrange
         await using var context = CreateContext(_container.GetConnectionString());
 
         // Act
-        var entityTypes = context.Model.GetEntityTypes();
+        var entityTypes = context.Model.GetEntityTypes().Select(e => e.ClrType.Name).ToList();
 
-        // Assert: this task only wires the empty skeleton context, no domain tables yet.
-        Assert.Empty(entityTypes);
+        // Assert
+        Assert.Contains("Product", entityTypes);
     }
 
     [Fact]

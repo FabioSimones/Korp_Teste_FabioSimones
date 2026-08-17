@@ -1,0 +1,63 @@
+namespace Inventory.Api.Features.Products;
+
+/// <summary>
+/// Product owned by the Inventory service. Enforces its own invariants
+/// (required code/description, non-negative balance) independently of the
+/// HTTP layer or the database constraints.
+/// </summary>
+public class Product
+{
+    public int Id { get; private set; }
+
+    public string Code { get; private set; } = string.Empty;
+
+    public string Description { get; private set; } = string.Empty;
+
+    public int Balance { get; private set; }
+
+    // Required by EF Core.
+    private Product()
+    {
+    }
+
+    private Product(string code, string description, int balance)
+    {
+        Code = code;
+        Description = description;
+        Balance = balance;
+    }
+
+    /// <summary>
+    /// Creates a new product, validating domain invariants. Throws
+    /// <see cref="ProductValidationException"/> when the input is invalid.
+    /// </summary>
+    public static Product Create(string? code, string? description, int balance)
+    {
+        var normalizedCode = code?.Trim();
+        var normalizedDescription = description?.Trim();
+
+        var errors = new List<string>();
+
+        if (string.IsNullOrEmpty(normalizedCode))
+        {
+            errors.Add("Code is required.");
+        }
+
+        if (string.IsNullOrEmpty(normalizedDescription))
+        {
+            errors.Add("Description is required.");
+        }
+
+        if (balance < 0)
+        {
+            errors.Add("Balance must be greater than or equal to zero.");
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new ProductValidationException(errors);
+        }
+
+        return new Product(normalizedCode!, normalizedDescription!, balance);
+    }
+}

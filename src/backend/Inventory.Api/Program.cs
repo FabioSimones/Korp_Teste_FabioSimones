@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Api.Features.Products;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 
@@ -37,6 +38,8 @@ builder.Services.AddProblemDetails(options =>
 });
 
 builder.Services.AddHealthChecks();
+
+builder.Services.AddScoped<IProductService, ProductService>();
 
 var app = builder.Build();
 
