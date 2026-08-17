@@ -1,0 +1,143 @@
+<section class="products-page" aria-labelledby="products-title">
+  <h1 id="products-title">Produtos</h1>
+
+  <mat-card class="products-page__card">
+    <mat-card-header>
+      <mat-card-title>Cadastrar produto</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <form
+        class="products-page__form"
+        [formGroup]="form"
+        (ngSubmit)="submit()"
+        novalidate
+        aria-label="Formulário de cadastro de produto"
+      >
+        <mat-form-field appearance="outline">
+          <mat-label>Código</mat-label>
+          <input matInput formControlName="code" maxlength="50" required autocomplete="off" />
+          @if (form.controls.code.invalid && form.controls.code.touched) {
+            <mat-error>
+              @if (form.controls.code.hasError('required')) {
+                Informe o código do produto.
+              } @else if (form.controls.code.hasError('duplicate')) {
+                Este código já está cadastrado.
+              } @else if (form.controls.code.hasError('maxlength')) {
+                O código deve ter no máximo 50 caracteres.
+              }
+            </mat-error>
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Descrição</mat-label>
+          <input
+            matInput
+            formControlName="description"
+            maxlength="200"
+            required
+            autocomplete="off"
+          />
+          @if (form.controls.description.invalid && form.controls.description.touched) {
+            <mat-error>
+              @if (form.controls.description.hasError('required')) {
+                Informe a descrição do produto.
+              } @else if (form.controls.description.hasError('maxlength')) {
+                A descrição deve ter no máximo 200 caracteres.
+              }
+            </mat-error>
+          }
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Saldo</mat-label>
+          <input matInput type="number" formControlName="balance" min="0" step="1" required />
+          @if (form.controls.balance.invalid && form.controls.balance.touched) {
+            <mat-error>
+              @if (form.controls.balance.hasError('required')) {
+                Informe o saldo inicial.
+              } @else if (form.controls.balance.hasError('min')) {
+                O saldo não pode ser negativo.
+              } @else if (form.controls.balance.hasError('integer')) {
+                O saldo deve ser um número inteiro.
+              }
+            </mat-error>
+          }
+        </mat-form-field>
+
+        @if (formError()) {
+          <p class="products-page__form-error" role="alert">{{ formError() }}</p>
+        }
+
+        <div class="products-page__form-actions">
+          <button
+            mat-flat-button
+            color="primary"
+            type="submit"
+            [disabled]="submitting()"
+            class="products-page__submit"
+          >
+            @if (submitting()) {
+              <mat-progress-spinner
+                diameter="18"
+                mode="indeterminate"
+                aria-hidden="true"
+              ></mat-progress-spinner>
+              <span>Cadastrando...</span>
+            } @else {
+              <span>Cadastrar produto</span>
+            }
+          </button>
+        </div>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="products-page__card">
+    <mat-card-header>
+      <mat-card-title>Produtos cadastrados</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      @if (loading()) {
+        <div class="products-page__state" role="status">
+          <mat-progress-spinner diameter="32" mode="indeterminate"></mat-progress-spinner>
+          <span>Carregando produtos...</span>
+        </div>
+      } @else if (listError()) {
+        <div class="products-page__state" role="alert">
+          <p>{{ listError() }}</p>
+          <button mat-stroked-button type="button" (click)="reload()">Tentar novamente</button>
+        </div>
+      } @else if (products().length === 0) {
+        <p class="products-page__empty">Nenhum produto cadastrado até o momento.</p>
+      } @else {
+        <div class="products-page__table-wrapper">
+          <table
+            mat-table
+            [dataSource]="products()"
+            class="products-page__table"
+            aria-label="Lista de produtos cadastrados"
+          >
+            <ng-container matColumnDef="code">
+              <th mat-header-cell *matHeaderCellDef>Código</th>
+              <td mat-cell *matCellDef="let product">{{ product.code }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="description">
+              <th mat-header-cell *matHeaderCellDef>Descrição</th>
+              <td mat-cell *matCellDef="let product">{{ product.description }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="balance">
+              <th mat-header-cell *matHeaderCellDef>Saldo</th>
+              <td mat-cell *matCellDef="let product">{{ product.balance }}</td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+            <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+          </table>
+        </div>
+      }
+    </mat-card-content>
+  </mat-card>
+</section>

@@ -41,6 +41,32 @@ builder.Services.AddHealthChecks();
 
 builder.Services.AddScoped<IProductService, ProductService>();
 
+// CORS: origem permitida configurável via "Cors:AllowedOrigins" (appsettings ou
+// variável de ambiente Cors__AllowedOrigins__0), sem AllowAnyOrigin/AllowCredentials.
+// Em Development, se a seção não estiver configurada, assume http://localhost:4200
+// (dev server padrão do Angular local).
+const string FrontendCorsPolicy = "FrontendCors";
+
+var configuredOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>();
+
+var allowedOrigins = configuredOrigins is { Length: > 0 }
+    ? configuredOrigins
+    : builder.Environment.IsDevelopment()
+        ? ["http://localhost:4200"]
+        : [];
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(FrontendCorsPolicy, policy =>
+    {
+        policy.WithOrigins(allowedOrigins)
+            .WithMethods("GET", "POST", "OPTIONS")
+            .WithHeaders("Content-Type");
+    });
+});
+
 var app = builder.Build();
 
 app.UseExceptionHandler();
@@ -54,6 +80,8 @@ if (app.Environment.IsDevelopment())
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "Inventory.Api v1");
     });
 }
+
+app.UseCors(FrontendCorsPolicy);
 
 app.UseAuthorization();
 
