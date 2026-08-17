@@ -1,9 +1,20 @@
+using Billing.Api.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+
+// Persistência: banco PostgreSQL próprio do serviço de Faturamento (billing_db).
+// Connection string configurada via appsettings ou variável de ambiente
+// ConnectionStrings__BillingDb, sem segredos versionados.
+var billingConnectionString = builder.Configuration.GetConnectionString("BillingDb")
+    ?? throw new InvalidOperationException("Connection string 'BillingDb' not configured.");
+
+builder.Services.AddDbContext<BillingDbContext>(options =>
+    options.UseNpgsql(billingConnectionString));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

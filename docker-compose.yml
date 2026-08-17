@@ -1,0 +1,50 @@
+services:
+  inventory-db:
+    image: postgres:16
+    container_name: inventory-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${INVENTORY_DB_NAME:-inventory_db}
+      POSTGRES_USER: ${INVENTORY_DB_USER:-inventory_user}
+      POSTGRES_PASSWORD: ${INVENTORY_DB_PASSWORD:?INVENTORY_DB_PASSWORD is required. Copy .env.example to .env and set it.}
+    ports:
+      - "${INVENTORY_DB_PORT:-5434}:5432"
+    volumes:
+      - inventory_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${INVENTORY_DB_USER:-inventory_user} -d ${INVENTORY_DB_NAME:-inventory_db}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  billing-db:
+    image: postgres:16
+    container_name: billing-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BILLING_DB_NAME:-billing_db}
+      POSTGRES_USER: ${BILLING_DB_USER:-billing_user}
+      POSTGRES_PASSWORD: ${BILLING_DB_PASSWORD:?BILLING_DB_PASSWORD is required. Copy .env.example to .env and set it.}
+    ports:
+      - "${BILLING_DB_PORT:-5433}:5432"
+    volumes:
+      - billing_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${BILLING_DB_USER:-billing_user} -d ${BILLING_DB_NAME:-billing_db}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  inventory_db_data:
+  billing_db_data:

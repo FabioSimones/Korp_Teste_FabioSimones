@@ -1,9 +1,20 @@
+using Inventory.Api.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+
+// Persistência: banco PostgreSQL próprio do serviço de Estoque (inventory_db).
+// Connection string configurada via appsettings ou variável de ambiente
+// ConnectionStrings__InventoryDb, sem segredos versionados.
+var inventoryConnectionString = builder.Configuration.GetConnectionString("InventoryDb")
+    ?? throw new InvalidOperationException("Connection string 'InventoryDb' not configured.");
+
+builder.Services.AddDbContext<InventoryDbContext>(options =>
+    options.UseNpgsql(inventoryConnectionString));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

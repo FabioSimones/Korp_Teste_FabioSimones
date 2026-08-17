@@ -8,7 +8,7 @@ Os commits correspondentes a cada task devem ser consultados com `git log --onel
 | --- | --- | --- |
 | 00 | Fundação e decisões iniciais | Concluída |
 | 01 | Estrutura inicial do backend | Concluída |
-| 02 | Bancos e Docker Compose | Pendente |
+| 02 | Bancos e Docker Compose | Concluída |
 | 03 | Estrutura inicial do Angular | Pendente |
 | 04 | Produtos no backend | Pendente |
 | 05 | Produtos no frontend | Pendente |
