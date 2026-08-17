@@ -5,7 +5,7 @@ Atualizar uma task para `Em validação` após implementação e testes automati
 | Task | Descrição | Estado | Commit |
 | --- | --- | --- | --- |
 | 00 | Fundação e decisões iniciais | Concluída | 567c729 |
-| 01 | Estrutura inicial do backend | Pendente | - |
+| 01 | Estrutura inicial do backend | Concluída | - |
 | 02 | Bancos e Docker Compose | Pendente | - |
 | 03 | Estrutura inicial do Angular | Pendente | - |
 | 04 | Produtos no backend | Pendente | - |
