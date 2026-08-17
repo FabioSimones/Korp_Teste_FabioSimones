@@ -1,0 +1,35 @@
+import { HttpClient, HttpContext } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
+import { Observable } from 'rxjs';
+
+import { environment } from '../../../environments/environment';
+import { SKIP_ERROR_NOTIFICATION } from '../../core/interceptors/skip-error-notification.token';
+import { CreateInvoiceRequest, Invoice } from './models/invoice';
+
+/**
+ * Typed HTTP client for the Billing.Api invoices endpoints. Keeps the
+ * feature components free of HttpClient/URL details.
+ */
+@Injectable({ providedIn: 'root' })
+export class InvoicesService {
+  private readonly http = inject(HttpClient);
+  private readonly baseUrl = `${environment.billingApiUrl}/api/invoices`;
+
+  // Every screen that calls this service already renders specific error UI
+  // (list error state with retry, detail not-found/error state, form
+  // validation/conflict messages), so the interceptor's generic notification
+  // is skipped here to avoid a redundant toast on top of it.
+  private readonly context = new HttpContext().set(SKIP_ERROR_NOTIFICATION, true);
+
+  getAll(): Observable<Invoice[]> {
+    return this.http.get<Invoice[]>(this.baseUrl, { context: this.context });
+  }
+
+  getById(id: number): Observable<Invoice> {
+    return this.http.get<Invoice>(`${this.baseUrl}/${id}`, { context: this.context });
+  }
+
+  create(request: CreateInvoiceRequest): Observable<Invoice> {
+    return this.http.post<Invoice>(this.baseUrl, request, { context: this.context });
+  }
+}

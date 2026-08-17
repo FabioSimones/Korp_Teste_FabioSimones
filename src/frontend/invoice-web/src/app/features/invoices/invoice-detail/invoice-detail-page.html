@@ -1,0 +1,72 @@
+<section class="invoice-detail-page" aria-labelledby="invoice-detail-title">
+  <div class="invoice-detail-page__header">
+    <h1 id="invoice-detail-title">Detalhes da nota</h1>
+    <a mat-stroked-button routerLink="/notas">Voltar para a listagem</a>
+  </div>
+
+  <mat-card class="invoice-detail-page__card">
+    <mat-card-content>
+      @if (loading()) {
+        <div class="invoice-detail-page__state" role="status">
+          <mat-progress-spinner diameter="32" mode="indeterminate"></mat-progress-spinner>
+          <span>Carregando nota...</span>
+        </div>
+      } @else if (loadError()) {
+        <div class="invoice-detail-page__state" role="alert">
+          <p>{{ loadError() }}</p>
+          <button mat-stroked-button type="button" (click)="reload()">Tentar novamente</button>
+        </div>
+      } @else if (invoice(); as loadedInvoice) {
+        <div class="invoice-detail-page__summary">
+          <div>
+            <span class="invoice-detail-page__label">Número</span>
+            <span class="invoice-detail-page__value">{{ loadedInvoice.number }}</span>
+          </div>
+          <div>
+            <span class="invoice-detail-page__label">Data</span>
+            <span class="invoice-detail-page__value">
+              {{ loadedInvoice.createdAtUtc | date: 'dd/MM/yyyy HH:mm' }}
+            </span>
+          </div>
+          <div>
+            <span class="invoice-detail-page__label">Status</span>
+            <app-invoice-status-badge [status]="loadedInvoice.status" />
+          </div>
+        </div>
+
+        <h2 class="invoice-detail-page__items-title">Itens</h2>
+
+        @if (loadedInvoice.items.length === 0) {
+          <p class="invoice-detail-page__empty">Esta nota não possui itens.</p>
+        } @else {
+          <div class="invoice-detail-page__table-wrapper">
+            <table
+              mat-table
+              [dataSource]="loadedInvoice.items"
+              class="invoice-detail-page__table"
+              aria-label="Itens da nota"
+            >
+              <ng-container matColumnDef="code">
+                <th mat-header-cell *matHeaderCellDef>Código</th>
+                <td mat-cell *matCellDef="let item">{{ item.productCode }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="description">
+                <th mat-header-cell *matHeaderCellDef>Descrição</th>
+                <td mat-cell *matCellDef="let item">{{ item.productDescription }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="quantity">
+                <th mat-header-cell *matHeaderCellDef>Quantidade</th>
+                <td mat-cell *matCellDef="let item">{{ item.quantity }}</td>
+              </ng-container>
+
+              <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+              <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+            </table>
+          </div>
+        }
+      }
+    </mat-card-content>
+  </mat-card>
+</section>

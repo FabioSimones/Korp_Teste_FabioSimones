@@ -81,15 +81,14 @@ Comandos confirmados na Task 03 (idênticos aos scripts reais de `src/frontend/i
 
 A preencher nas tasks de implementação.
 
-## CORS (Inventory.Api)
+## CORS (Inventory.Api e Billing.Api)
 
-Correção de integração para desbloquear o frontend Angular local (`http://localhost:4200`), que era bloqueado pelo navegador por ausência de CORS no `Inventory.Api`:
+Correção de integração para desbloquear o frontend Angular local (`http://localhost:4200`), que era bloqueado pelo navegador por ausência de CORS. Aplicada primeiro no `Inventory.Api` (correção pós-Task 04) e, com o mesmo padrão, no `Billing.Api` (correção pós-Task 06, para desbloquear a validação da Task 07 de notas fiscais no Angular):
 
-- `Program.cs` registra uma política nomeada (`AddCors`) lida de configuração na seção `Cors:AllowedOrigins` (array de strings), sem valores versionados como segredo. Em `appsettings.Development.json` essa seção contém `["http://localhost:4200"]`. Fora de Development, se a seção não estiver configurada, a lista de origens permitidas fica vazia (nenhuma origem liberada) até ser definida explicitamente.
+- Cada `Program.cs` (independente entre os dois serviços, sem abstração compartilhada) registra uma política nomeada (`AddCors`) lida de configuração na seção `Cors:AllowedOrigins` (array de strings), sem valores versionados como segredo. Em `appsettings.Development.json` de cada serviço essa seção contém `["http://localhost:4200"]`. Fora de Development, se a seção não estiver configurada, a lista de origens permitidas fica vazia (nenhuma origem liberada) até ser definida explicitamente.
 - A origem pode ser sobrescrita por variável de ambiente padrão do ASP.NET Core, por exemplo `Cors__AllowedOrigins__0=http://outra-origem`.
 - A política permite apenas os métodos `GET`, `POST` e `OPTIONS` e o header `Content-Type`; não usa `AllowAnyOrigin` nem `AllowCredentials`.
-- `UseCors` é chamado em `Program.cs` antes de `UseAuthorization()`/`MapControllers()`.
-- `Billing.Api` não foi alterado nesta correção (fora do escopo).
+- `UseCors` é chamado em cada `Program.cs` antes de `UseAuthorization()`/`MapControllers()`.
 
 ## Estrutura do frontend (Task 03)
 
@@ -188,6 +187,7 @@ Descrever mecanismo implementado e teste com saldo 1.
   - `ProductsApiTests.cs`: integração ponta a ponta via `WebApplicationFactory<Program>` contra PostgreSQL real (migrations aplicadas no start) — cadastro válido, campos inválidos (múltiplos casos), código duplicado, listagem, busca por id existente/inexistente e verificação de persistência física por um `DbContext` independente.
   - `InventoryDbContextConnectivityTests.cs`: conectividade do `DbContext` e mapeamento das entidades registradas.
   - `CorsApiTests.cs` (correção de integração pós-Task 04): preflight `OPTIONS /api/products` liberado para `http://localhost:4200` (com métodos/headers corretos), preflight não reflete origem não autorizada, e `GET /api/products` com origem autorizada retorna `Access-Control-Allow-Origin` exato.
+- `Billing.Tests` também possui `CorsApiTests.cs` (correção de integração pós-Task 06, mesmo padrão do `Inventory.Tests`): preflight `OPTIONS /api/invoices` liberado para `http://localhost:4200` (com métodos/headers corretos), preflight não reflete origem não autorizada, e `GET /api/invoices` com origem autorizada retorna `Access-Control-Allow-Origin` exato.
 
 ## Limitações conhecidas
 

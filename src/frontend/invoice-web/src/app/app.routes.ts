@@ -16,7 +16,23 @@ export const routes: Routes = [
       {
         path: 'notas',
         loadComponent: () =>
-          import('./features/invoices/invoices-page').then((m) => m.InvoicesPage),
+          import('./features/invoices/invoices-list/invoices-list-page').then(
+            (m) => m.InvoicesListPage,
+          ),
+      },
+      {
+        path: 'notas/nova',
+        loadComponent: () =>
+          import('./features/invoices/invoice-form/invoice-form-page').then(
+            (m) => m.InvoiceFormPage,
+          ),
+      },
+      {
+        path: 'notas/:id',
+        loadComponent: () =>
+          import('./features/invoices/invoice-detail/invoice-detail-page').then(
+            (m) => m.InvoiceDetailPage,
+          ),
       },
       {
         path: '**',

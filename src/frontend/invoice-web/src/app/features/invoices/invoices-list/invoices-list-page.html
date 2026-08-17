@@ -1,0 +1,63 @@
+<section class="invoices-list-page" aria-labelledby="invoices-title">
+  <div class="invoices-list-page__header">
+    <h1 id="invoices-title">Notas</h1>
+    <a mat-flat-button color="primary" routerLink="/notas/nova">
+      <mat-icon aria-hidden="true">add</mat-icon>
+      Nova nota
+    </a>
+  </div>
+
+  <mat-card class="invoices-list-page__card">
+    <mat-card-content>
+      @if (loading()) {
+        <div class="invoices-list-page__state" role="status">
+          <mat-progress-spinner diameter="32" mode="indeterminate"></mat-progress-spinner>
+          <span>Carregando notas...</span>
+        </div>
+      } @else if (listError()) {
+        <div class="invoices-list-page__state" role="alert">
+          <p>{{ listError() }}</p>
+          <button mat-stroked-button type="button" (click)="reload()">Tentar novamente</button>
+        </div>
+      } @else if (invoices().length === 0) {
+        <p class="invoices-list-page__empty">Nenhuma nota cadastrada até o momento.</p>
+      } @else {
+        <div class="invoices-list-page__table-wrapper">
+          <table
+            mat-table
+            [dataSource]="invoices()"
+            class="invoices-list-page__table"
+            aria-label="Lista de notas cadastradas"
+          >
+            <ng-container matColumnDef="number">
+              <th mat-header-cell *matHeaderCellDef>Número</th>
+              <td mat-cell *matCellDef="let invoice">{{ invoice.number }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="createdAt">
+              <th mat-header-cell *matHeaderCellDef>Data</th>
+              <td mat-cell *matCellDef="let invoice">
+                {{ invoice.createdAtUtc | date: 'dd/MM/yyyy HH:mm' }}
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="status">
+              <th mat-header-cell *matHeaderCellDef>Status</th>
+              <td mat-cell *matCellDef="let invoice">
+                <app-invoice-status-badge [status]="invoice.status" />
+              </td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+            <tr
+              mat-row
+              *matRowDef="let row; columns: displayedColumns"
+              class="invoices-list-page__row"
+              [routerLink]="['/notas', row.id]"
+            ></tr>
+          </table>
+        </div>
+      }
+    </mat-card-content>
+  </mat-card>
+</section>

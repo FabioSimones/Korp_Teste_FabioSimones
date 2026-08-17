@@ -13,7 +13,7 @@ Os commits correspondentes a cada task devem ser consultados com `git log --onel
 | 04 | Produtos no backend | Concluída |
 | 05 | Produtos no frontend | Concluída |
 | 06 | Notas no backend | Concluída |
-| 07 | Notas no frontend | Pendente |
+| 07 | Notas no frontend | Concluída |
 | 08 | Baixa transacional e idempotente | Pendente |
 | 09 | Impressão e fechamento no backend | Pendente |
 | 10 | Impressão no frontend | Pendente |

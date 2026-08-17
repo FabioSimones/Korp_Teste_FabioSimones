@@ -1,0 +1,53 @@
+.invoices-list-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 960px;
+}
+
+.invoices-list-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.invoices-list-page__card {
+  width: 100%;
+}
+
+.invoices-list-page__state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.invoices-list-page__empty {
+  padding: 16px 0;
+  color: var(--mat-sys-on-surface-variant, rgba(0, 0, 0, 0.6));
+}
+
+.invoices-list-page__table-wrapper {
+  overflow-x: auto;
+}
+
+.invoices-list-page__table {
+  width: 100%;
+}
+
+.invoices-list-page__row {
+  cursor: pointer;
+}
+
+.invoices-list-page__row:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+@media (max-width: 599px) {
+  .invoices-list-page__state {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
