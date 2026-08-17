@@ -64,23 +64,69 @@ npm test
 npm run build
 ```
 
-Comandos exatos de `package.json` serão confirmados na Task 03 ao gerar o projeto Angular; a estrutura acima é a convenção adotada.
+Comandos confirmados na Task 03 (idênticos aos scripts reais de `src/frontend/invoice-web/package.json`):
+
+| Script npm | Ferramenta | Observação |
+| --- | --- | --- |
+| `start` | `ng serve` | Dev server em `:4200` |
+| `build` | `ng build` | Builder `@angular/build:application`; `--configuration development` usa `environment.development.ts` |
+| `test` | `ng test` | Builder `@angular/build:unit-test` (Vitest + jsdom, não Karma) |
+| `lint` | `ng lint` | ESLint via schematic `angular-eslint` |
+| `format` | `prettier --write "src/**/*.{ts,html,scss}"` | Formatação |
+| `format:check` | `prettier --check "src/**/*.{ts,html,scss}"` | Verificação de formatação (CI) |
+
+`npm ci` instala as dependências antes de rodar os scripts acima.
 
 ## Arquitetura dos microsserviços
 
 A preencher nas tasks de implementação.
 
+## Estrutura do frontend (Task 03)
+
+Aplicação Angular criada em `src/frontend/invoice-web` com `@angular/cli` 21.2.8 (`ng new --style=scss --routing --ssr=false --strict`), apenas com o shell visual (sem telas de negócio):
+
+```text
+src/frontend/invoice-web/src/
+├── app/
+│   ├── app.ts / app.routes.ts / app.config.ts
+│   ├── core/
+│   │   ├── interceptors/error.interceptor.ts   (esqueleto: log + notificação genérica de erro HTTP)
+│   │   └── services/notification.service.ts    (wrapper sobre MatSnackBar)
+│   ├── layout/shell/                           (toolbar + sidenav responsivo, navegação)
+│   ├── features/
+│   │   ├── products/products-page.ts           (placeholder, sem formulário/listagem)
+│   │   └── invoices/invoices-page.ts            (placeholder, sem formulário/listagem)
+│   └── not-found/                               (página 404)
+└── environments/
+    ├── environment.ts                           (produção; inventoryApiUrl/billingApiUrl)
+    └── environment.development.ts               (dev; mesmas URLs locais :5081/:5082)
+```
+
+Rotas (`app.routes.ts`): `Shell` é o componente de layout (`path: ''`) com filhos `produtos`, `notas` (ambos `loadComponent`, lazy) e um catch-all `**` para a página não encontrada — todos renderizados dentro do shell (toolbar/sidenav permanecem visíveis, inclusive no 404). A raiz redireciona para `produtos`.
+
+`environment.development.ts` é aplicado via `fileReplacements` na configuração `development` do builder `build` em `angular.json` (usada pelo `ng serve`, que tem `development` como configuração padrão).
+
 ## Ciclos de vida do Angular
 
-Registrar somente hooks efetivamente utilizados e onde foram necessários.
+Nenhum `ngOnInit`/hook de ciclo de vida explícito foi necessário nesta task; `Shell` reage a mudanças de breakpoint via `BreakpointObserver` no `constructor`, usando `takeUntilDestroyed()` para encerrar a subscription automaticamente.
 
 ## RxJS
 
-Registrar operadores efetivamente utilizados, como `finalize`, `catchError`, `switchMap`, `debounceTime`, `distinctUntilChanged` e `takeUntilDestroyed`.
+- `takeUntilDestroyed()`: usado em `Shell` para encerrar a subscription do `BreakpointObserver.observe(Breakpoints.Handset)` quando o componente é destruído.
+- `catchError` / `throwError`: usados no `errorInterceptor` (esqueleto) para logar a falha HTTP, notificar o usuário e repropagar o erro.
+
+`finalize` ainda não é utilizado nesta task (não há indicador de carregamento associado a chamada HTTP real; será usado a partir das tasks de produtos/notas).
 
 ## Outras bibliotecas
 
-Listar biblioteca, versão, finalidade e justificativa.
+| Biblioteca | Versão | Finalidade | Justificativa |
+| --- | --- | --- | --- |
+| `@angular/material` | 21.2.14 | Componentes visuais (toolbar, sidenav, snackbar, listas, botões, ícones) | Já decidido em `docs/architecture.md`; instalado via `ng add @angular/material` (tema customizado com paletas `azure`/`blue`, tipografia Roboto, sem pré-fabricados de exemplo) |
+| `@angular/cdk` | 21.2.14 | `BreakpointObserver` para o layout responsivo do shell | Instalado automaticamente como dependência do Angular Material |
+| `@angular/animations` | 21.2.20 | Suporte a animações do Angular Material (ripple, sidenav, snackbar) via `provideAnimationsAsync()` | Dependência peer exigida pelo Material; API atualmente marcada como depreciada em favor de `animate.enter`/`animate.leave`, mas ainda é o caminho suportado pelo Material nesta versão |
+| `angular-eslint` (+ `eslint`, `typescript-eslint`, `@eslint/js`) | 21.4.0 (eslint 10.3.0, typescript-eslint 8.59.2) | Lint do projeto (`ng lint`) | Instalado via `ng add angular-eslint`, schematic oficial recomendado pelo Angular CLI 21 |
+| `prettier` | 3.8.1 | Formatação (`npm run format` / `format:check`) | Já incluído pelo `ng new`; configuração em `.prettierrc` (aspas simples, `printWidth` 100, parser `angular` para HTML) |
+| `vitest` (+ `jsdom`) | 4.1.10 (jsdom 28.x) | Executor de testes unitários usado pelo builder `@angular/build:unit-test` (`ng test`) | Runner padrão do Angular CLI 21 para novos projetos, substitui o Karma; não foi uma escolha manual |
 
 ## LINQ
 

@@ -1,0 +1,27 @@
+.shell {
+  height: 100vh;
+}
+
+.shell__sidenav {
+  width: 240px;
+}
+
+.shell__title {
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+.shell__content {
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.active-link {
+  background-color: var(--mat-sys-secondary-container);
+}
+
+@media (max-width: 599px) {
+  .shell__content {
+    padding: 12px;
+  }
+}

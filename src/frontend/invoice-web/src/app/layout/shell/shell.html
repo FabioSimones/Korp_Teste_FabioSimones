@@ -1,0 +1,45 @@
+<mat-sidenav-container class="shell">
+  <mat-sidenav
+    #drawer
+    class="shell__sidenav"
+    [mode]="isHandset() ? 'over' : 'side'"
+    [opened]="!isHandset()"
+    [fixedInViewport]="isHandset()"
+  >
+    <nav aria-label="Navegação principal">
+      <mat-nav-list>
+        @for (link of navLinks; track link.path) {
+          <a
+            mat-list-item
+            [routerLink]="link.path"
+            routerLinkActive="active-link"
+            (click)="isHandset() && drawer.close()"
+          >
+            <mat-icon matListItemIcon>{{ link.icon }}</mat-icon>
+            <span matListItemTitle>{{ link.label }}</span>
+          </a>
+        }
+      </mat-nav-list>
+    </nav>
+  </mat-sidenav>
+
+  <mat-sidenav-content>
+    <mat-toolbar color="primary" class="shell__toolbar">
+      @if (isHandset()) {
+        <button
+          type="button"
+          mat-icon-button
+          aria-label="Abrir menu de navegação"
+          (click)="drawer.toggle()"
+        >
+          <mat-icon>menu</mat-icon>
+        </button>
+      }
+      <span class="shell__title">Korp - Emissão de Notas</span>
+    </mat-toolbar>
+
+    <main class="shell__content" id="main-content">
+      <router-outlet />
+    </main>
+  </mat-sidenav-content>
+</mat-sidenav-container>
