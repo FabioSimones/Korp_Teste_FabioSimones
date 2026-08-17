@@ -12,7 +12,7 @@ Os commits correspondentes a cada task devem ser consultados com `git log --onel
 | 03 | Estrutura inicial do Angular | Concluída |
 | 04 | Produtos no backend | Concluída |
 | 05 | Produtos no frontend | Concluída |
-| 06 | Notas no backend | Pendente |
+| 06 | Notas no backend | Concluída |
 | 07 | Notas no frontend | Pendente |
 | 08 | Baixa transacional e idempotente | Pendente |
 | 09 | Impressão e fechamento no backend | Pendente |

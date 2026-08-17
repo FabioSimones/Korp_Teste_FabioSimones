@@ -22,6 +22,17 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\backend\Billing.Api\Billing.Api.csproj" />
+    <!--
+      Referenced only by InvoicesRealInventoryIntegrationTests.cs, to host a
+      real, in-process Inventory.Api next to Billing.Api for one genuine
+      end-to-end test. Aliased because both APIs declare an unnamed
+      top-level-statement `Program` class in the global namespace, which
+      would otherwise collide with Billing.Api's own `Program` used
+      throughout the other test classes in this project.
+    -->
+    <ProjectReference Include="..\..\src\backend\Inventory.Api\Inventory.Api.csproj">
+      <Aliases>InventoryApiAssembly</Aliases>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>

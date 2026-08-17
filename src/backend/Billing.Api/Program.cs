@@ -1,4 +1,5 @@
 using Billing.Api.Data;
+using Billing.Api.Features.Invoices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 
@@ -37,6 +38,22 @@ builder.Services.AddProblemDetails(options =>
 });
 
 builder.Services.AddHealthChecks();
+
+builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+
+// Cliente HTTP resiliente entre Faturamento e Estoque (docs/architecture.md):
+// usado apenas para validar produtos e capturar o snapshot de código/descrição
+// ao criar uma nota. Timeout curto para não bloquear a requisição indefinidamente
+// quando o Inventory.Api estiver indisponível (mapeado para 503 pelo controller).
+// Retry/circuit breaker avançados ficam para a Task 11 (Resiliência).
+var inventoryApiBaseUrl = builder.Configuration["InventoryApi:BaseUrl"]
+    ?? throw new InvalidOperationException("Configuration 'InventoryApi:BaseUrl' not set.");
+
+builder.Services.AddHttpClient<IInventoryProductClient, InventoryProductClient>(client =>
+{
+    client.BaseAddress = new Uri(inventoryApiBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
 
 var app = builder.Build();
 

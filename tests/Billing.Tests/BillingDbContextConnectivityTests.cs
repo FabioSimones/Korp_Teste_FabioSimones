@@ -34,16 +34,17 @@ public class BillingDbContextConnectivityTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task DbContext_Has_No_Domain_Entities_Yet()
+    public async Task DbContext_Maps_Invoice_Domain_Entities()
     {
         // Arrange
         await using var context = CreateContext(_container.GetConnectionString());
 
         // Act
-        var entityTypes = context.Model.GetEntityTypes();
+        var entityTypeNames = context.Model.GetEntityTypes().Select(e => e.ClrType.Name).ToList();
 
-        // Assert: this task only wires the empty skeleton context, no domain tables yet.
-        Assert.Empty(entityTypes);
+        // Assert: since Task 06, the context maps the invoice domain (no product/stock entities).
+        Assert.Contains("Invoice", entityTypeNames);
+        Assert.Contains("InvoiceItem", entityTypeNames);
     }
 
     [Fact]
