@@ -17,10 +17,10 @@ Se a aprovação estiver ausente ou tiver outro valor, pare sem alterar o Git.
 5. Se houver achado bloqueador ou importante não resolvido, não crie o commit.
 6. Execute novamente build e testes relevantes para a task.
 7. Verifique que não existem segredos, `.env`, credenciais, binários ou alterações de outra task.
-8. Atualize somente a task correspondente em `docs/progress.md` para `Concluída`.
+8. Atualize somente a task correspondente em `docs/progress.md` para `Concluída`. Não escreva o hash deste checkpoint (nem nenhum outro hash de commit) em `docs/progress.md` — a tabela não registra commits; use `git log --oneline` para consultá-los.
 9. Faça staging seletivo dos arquivos da task; não use staging indiscriminado.
 10. Revise `git diff --cached --check` e `git diff --cached`.
 11. Crie um único commit com `$commit_message`.
 12. Não execute push e não inicie a próxima task.
-13. Informe hash, mensagem, arquivos incluídos e resultados dos testes.
+13. Informe hash, mensagem, arquivos incluídos e resultados dos testes. O hash do commit aparece somente neste relatório final, nunca em `docs/progress.md`.
 
