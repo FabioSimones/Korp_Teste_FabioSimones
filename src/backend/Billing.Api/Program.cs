@@ -55,6 +55,16 @@ builder.Services.AddHttpClient<IInventoryProductClient, InventoryProductClient>(
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 
+// Dedicated client for the atomic stock debit call used by the print/close
+// flow (docs/architecture.md "Fluxo de impressão"). Same target service and
+// timeout policy as the product lookup client above, kept separate because
+// it has a distinct responsibility (write-off vs. read-only lookup).
+builder.Services.AddHttpClient<IInventoryStockClient, InventoryStockClient>(client =>
+{
+    client.BaseAddress = new Uri(inventoryApiBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 // CORS: origem permitida configurável via "Cors:AllowedOrigins" (appsettings ou
 // variável de ambiente Cors__AllowedOrigins__0), sem AllowAnyOrigin/AllowCredentials.
 // Em Development, se a seção não estiver configurada, assume http://localhost:4200

@@ -45,6 +45,14 @@ public class BillingDbContext : DbContext
 
             entity.Property(i => i.CreatedAtUtc).IsRequired();
 
+            // Nullable: assigned only once the invoice is printed (see
+            // Invoice.PrepareForPrint / Invoice.Close). OperationId is
+            // reused across print retries for the same invoice, so it is not
+            // unique across invoices (unlike Inventory's own operation
+            // table, which is unique per debit).
+            entity.Property(i => i.OperationId);
+            entity.Property(i => i.ClosedAtUtc);
+
             // Items is exposed as a read-only collection backed by the
             // private field "_items"; EF Core's default backing-field
             // convention (property "Items" -> field "_items") resolves it

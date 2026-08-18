@@ -239,6 +239,50 @@ A única forma de concorrência tratada nesta task é a repetição do mesmo `Op
 
 Concorrência entre requisições com `OperationId` diferentes que disputam o saldo do mesmo produto (ex.: duas baixas simultâneas contra um produto com saldo 1) não foi implementada nem testada nesta task — ver "Limitações conhecidas".
 
+## Impressão e fechamento de notas (Billing.Api, Task 09)
+
+Endpoint `POST /api/invoices/{id}/print` (`Billing.Api/Features/Invoices/InvoicesController.cs`), único ponto de entrada para fechar uma nota `Open`: orquestra a baixa atômica no `Inventory.Api` e só então fecha a nota. Toda a regra vive em `InvoiceService.PrintAsync`; o controller apenas traduz exceções de domínio/serviço em respostas HTTP.
+
+### Fluxo e transição de estado
+
+1. A nota é carregada com seus itens (`Include(i => i.Items)`); se não existir, `InvoiceNotFoundException` → 404.
+2. `Invoice.PrepareForPrint()` valida que a nota ainda está `Open` (senão `InvoiceAlreadyClosedException` → 409) e gera/reutiliza `OperationId` (`Guid`, gerado uma única vez por nota — chamadas repetidas reutilizam o mesmo valor).
+3. **`OperationId` é persistido (`SaveChangesAsync`) antes de qualquer chamada ao Inventory** — decisão deliberada para que uma falha entre a baixa e o fechamento não perca a reserva: uma nova tentativa reutiliza o mesmo `OperationId`.
+4. `IInventoryStockClient.DebitAsync` chama `POST /api/stock/debits` no Inventory. Qualquer falha aqui (produto inexistente, saldo insuficiente, Inventory indisponível) propaga sem fechar a nota, que permanece `Open` com o `OperationId` já persistido.
+5. Somente após a baixa ser confirmada com sucesso, `Invoice.Close(DateTime.UtcNow)` transiciona `Open` → `Closed` e define `ClosedAtUtc`; um segundo `SaveChangesAsync` persiste o fechamento.
+
+`ClosedAtUtc` (`DateTime?`, nullable) e `OperationId` (`Guid?`, nullable) foram adicionados à tabela `invoices` pela migration `AddInvoicePrintFields` (`Data/Migrations/20260818151548_AddInvoicePrintFields.cs`), aditiva e sem impacto em notas existentes (colunas nullable, sem backfill necessário).
+
+### Cliente Billing → Inventory (baixa de estoque)
+
+`InventoryStockClient` (`Features/Invoices/InventoryStockClient.cs`), registrado como `HttpClient` tipado (`AddHttpClient<IInventoryStockClient, InventoryStockClient>`) com **timeout de 5 segundos**, separado do cliente de consulta de produtos (`IInventoryProductClient`) por ter responsabilidade distinta (escrita/baixa vs. leitura).
+
+Mapeamento de respostas do Inventory para exceções de domínio do Billing, traduzidas pelo `InvoicesController` em HTTP:
+
+| Resposta do Inventory / falha do cliente HTTP | Exceção no Billing | HTTP no `POST /print` |
+| --- | --- | --- |
+| `404` (produto não encontrado) | `InvoiceProductNotFoundException` | 404 |
+| `409` (saldo insuficiente) | `InsufficientStockBalanceException` | 409 |
+| `HttpRequestException` (indisponível) / timeout (`TaskCanceledException` sem cancelamento pelo chamador) / status inesperado / corpo de resposta inválido ou vazio | `InventoryServiceUnavailableException` | 503 |
+| nota já `Closed` | `InvoiceAlreadyClosedException` | 409 |
+| nota inexistente | `InvoiceNotFoundException` | 404 |
+
+Em todos os caminhos de falha, a nota **permanece `Open`**: `Invoice.Close` só é chamado depois que `DebitAsync` retorna com sucesso.
+
+### Replay após falha parcial (janela crítica)
+
+Cenário coberto: a baixa é confirmada no Inventory, mas o Billing não consegue observar essa confirmação (conexão perdida, timeout na leitura da resposta, crash do processo) antes de fechar a nota. Como o `OperationId` já foi persistido no passo 3, uma nova tentativa de `POST /print` para a mesma nota reutiliza o mesmo `OperationId`; o Inventory reconhece a repetição (idempotência por `OperationId`, ver "Idempotência") e devolve o resultado já registrado sem debitar o saldo novamente — o Billing então fecha a nota normalmente.
+
+### Testes
+
+- `tests/Billing.Tests/InvoicesPrintApiTests.cs`: orquestração do Billing isolada com `FakeInventoryStockClient` (fechamento em sucesso, `OperationId` único por chamada, 404/409/503 de nota inexistente/já fechada/Inventory indisponível/saldo insuficiente, reutilização do `OperationId` persistido de uma tentativa anterior interrompida).
+- `tests/Billing.Tests/InvoicesPrintRealInventoryIntegrationTests.cs`: ponta a ponta com `Inventory.Api` real hospedado em processo (`WebApplicationFactory`) e Postgres real via Testcontainers para os dois bancos — saldo efetivamente debitado, baixa atômica de múltiplos itens, saldo insuficiente mantém a nota `Open`, retentativa após nota já fechada não debita de novo.
+- `Print_When_Stock_Was_Debited_But_Response_Was_Lost_Retry_Closes_Without_Second_Debit` (mesma classe, adicionada na validação da Task 09): reproduz a janela crítica com infraestrutura exclusiva de teste — um decorator (`ResponseLostAfterSuccessfulDebitStockClient`, classe privada do teste) encaminha a primeira chamada para o `InventoryStockClient` real (contra o Inventory real/Postgres real), deixa a baixa genuinamente acontecer e só então descarta o resultado e lança `InventoryServiceUnavailableException`, simulando a perda da resposta; a segunda chamada é encaminhada normalmente. Nenhum mecanismo de falha foi adicionado ao código de produção. Asserts: primeira tentativa retorna 503 e a nota permanece `Open` com `ClosedAtUtc` nulo; saldo já reduzido em uma unidade de baixa; `OperationId` persistido no banco do Billing após a primeira tentativa; segunda tentativa reutiliza esse mesmo `OperationId`, retorna 200 e fecha a nota (`ClosedAtUtc` preenchido só agora); saldo final comprova apenas uma baixa; existe exatamente uma `StockDebitOperation` no Inventory para aquele `OperationId` (consulta direta ao `InventoryDbContext`).
+
+### Limitação de concorrência (fora do escopo desta task)
+
+A proteção implementada cobre apenas a sequência de tentativas/retentativas para a **mesma** nota via `OperationId` idempotente (a janela de falha distribuída descrita acima está coberta por teste). **Duas impressões concorrentes disparadas simultaneamente para a mesma nota** (ex.: dois cliques quase simultâneos, duas requisições HTTP paralelas) não têm proteção dedicada nem teste automatizado nesta task — não há lock otimista/pessimista sobre a nota durante o fluxo de impressão. Fica reservado para uma task futura de concorrência; não afirmar que esse cenário está resolvido.
+
 ### Domínio
 
 - `Product.Debit(quantity)` (`Features/Products/Product.cs`) é o único ponto que altera `Product.Balance`. Garante que o saldo nunca fica negativo: se `quantity > Balance`, lança `InsufficientProductBalanceException` (produto, saldo disponível e quantidade pedida) sem alterar `Balance`; se `quantity <= 0`, lança `ArgumentOutOfRangeException` (checagem defensiva do invariante do domínio — na prática, quantidades não positivas já são rejeitadas antes, na validação do pedido em `StockDebitService.ValidateRequest`, então esse caminho normalmente não é alcançado via HTTP).
@@ -258,9 +302,13 @@ Concorrência entre requisições com `OperationId` diferentes que disputam o sa
   - `ProductDomainTests.cs` (unitários, sem banco): `Product.Debit` com saldo suficiente (decrementa), saldo exatamente igual à quantidade (chega a zero), saldo insuficiente (lança `InsufficientProductBalanceException` e não altera `Balance`), quantidade não positiva (lança `ArgumentOutOfRangeException`).
   - `StockApiTests.cs` (integração ponta a ponta via `WebApplicationFactory<Program>`, contra PostgreSQL real via Testcontainers, migrations aplicadas no `InitializeAsync`): baixa exata até saldo zero; baixa de múltiplos produtos no mesmo pedido; produto inexistente retorna 404 sem efeito parcial; quantidade não positiva (0 e negativa) retorna 400; `OperationId` vazio retorna 400; lista de itens vazia retorna 400; saldo insuficiente em um dos itens retorna 409 e reverte (rollback real, comprovado contra o container) o saldo de **ambos** os produtos do pedido; repetição do mesmo `OperationId` não debita duas vezes e devolve o mesmo resultado; repetição do mesmo `OperationId` com itens diferentes ainda devolve o resultado original (sem novo débito); persistência física da operação e do item verificada por um `DbContext` independente, lendo diretamente do container.
   - Não há, nesta task, um teste automatizado que dispare duas requisições HTTP concorrentes de verdade (em threads/tasks paralelas) contra o mesmo produto ou o mesmo `OperationId`; o caminho de tratamento de corrida por violação de unicidade (`catch (DbUpdateException ex) when (IsUniqueViolation(ex))` em `StockDebitService`) existe no código e foi revisado por inspeção, mas não é exercitado por teste automatizado nem foi objeto de um roteiro manual de concorrência registrado — ver "Limitações conhecidas".
+- Cobertura da Task 09 (`Billing.Tests`) — ver também "Impressão e fechamento de notas (Billing.Api, Task 09)":
+  - `InvoicesPrintApiTests.cs`: orquestração do fluxo de impressão isolada com `FakeInventoryStockClient`.
+  - `InvoicesPrintRealInventoryIntegrationTests.cs`: ponta a ponta com Inventory.Api real e dois bancos Postgres reais (Testcontainers), incluindo `Print_When_Stock_Was_Debited_But_Response_Was_Lost_Retry_Closes_Without_Second_Debit`, que reproduz a janela crítica "saldo debitado mas Billing não fechou a nota" com uma baixa real seguida de retentativa idempotente.
 
 ## Limitações conhecidas
 
 - Concorrência simultânea entre baixas distintas (`OperationId` diferentes) disputando o saldo do mesmo produto ainda não foi implementada nem testada: o mecanismo atual (transação explícita por requisição + check constraint `CK_products_balance_non_negative` no banco) evita saldo negativo mesmo sob corrida, mas não há tratamento dedicado (ex.: lock otimista/pessimista) nem teste automatizado simulando duas baixas simultâneas contra um produto com saldo baixo (ex.: saldo 1). Fica reservado para uma tarefa futura dedicada a concorrência.
 - O tratamento de corrida para requisições com o **mesmo** `OperationId` chegando simultaneamente (violação do índice único capturada como `DbUpdateException`) existe no código da Task 08, mas não é exercitado por um teste automatizado com requisições paralelas reais — apenas revisado por inspeção.
+- Impressões concorrentes (Task 09) sobre a **mesma nota** (duas requisições `POST /print` simultâneas) não têm proteção dedicada nem teste automatizado — apenas a sequência de tentativas/retentativas para a mesma nota via `OperationId` idempotente está coberta. Fica reservado para a task futura de concorrência; ver "Impressão e fechamento de notas (Billing.Api, Task 09)".
 

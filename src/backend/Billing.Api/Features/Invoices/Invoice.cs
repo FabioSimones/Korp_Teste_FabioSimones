@@ -1,9 +1,10 @@
 namespace Billing.Api.Features.Invoices;
 
 /// <summary>
-/// Lifecycle status of an invoice. Only <see cref="Open"/> is produced by this
-/// task; the transition to <see cref="Closed"/> happens in a later task
-/// (print/close flow), together with the atomic stock write-off.
+/// Lifecycle status of an invoice. An invoice starts as <see cref="Open"/> and
+/// transitions to <see cref="Closed"/> only once the print/close flow
+/// confirms the atomic stock write-off with the Inventory service (see
+/// <see cref="Close"/>).
 /// </summary>
 public enum InvoiceStatus
 {
@@ -29,6 +30,20 @@ public class Invoice
     public InvoiceStatus Status { get; private set; }
 
     public DateTime CreatedAtUtc { get; private set; }
+
+    /// <summary>
+    /// Identifier reused across print attempts for the same invoice so a
+    /// retried <c>POST /api/invoices/{id}/print</c> call reuses the same
+    /// stock debit operation instead of registering a new one with
+    /// Inventory. Assigned lazily by <see cref="PrepareForPrint"/> the first
+    /// time the invoice is printed, and persisted before the call to
+    /// Inventory so a crash between the debit succeeding and the invoice
+    /// closing does not lose the reservation.
+    /// </summary>
+    public Guid? OperationId { get; private set; }
+
+    /// <summary>UTC timestamp set when the invoice transitions to <see cref="InvoiceStatus.Closed"/>.</summary>
+    public DateTime? ClosedAtUtc { get; private set; }
 
     public IReadOnlyCollection<InvoiceItem> Items => _items.AsReadOnly();
 
@@ -57,5 +72,41 @@ public class Invoice
         }
 
         return new Invoice(items);
+    }
+
+    /// <summary>
+    /// Prepares this invoice for printing: validates that it is still
+    /// <see cref="InvoiceStatus.Open"/> and returns the <see cref="OperationId"/>
+    /// to use for the stock debit call, generating one on first call and
+    /// reusing the same value on any subsequent call (so a retried print
+    /// request never mints a second operation for the same invoice).
+    /// </summary>
+    /// <exception cref="InvoiceAlreadyClosedException">The invoice is already <see cref="InvoiceStatus.Closed"/>.</exception>
+    public Guid PrepareForPrint()
+    {
+        if (Status == InvoiceStatus.Closed)
+        {
+            throw new InvoiceAlreadyClosedException(Id);
+        }
+
+        OperationId ??= Guid.NewGuid();
+        return OperationId.Value;
+    }
+
+    /// <summary>
+    /// Closes the invoice after the stock debit has been confirmed by the
+    /// Inventory service. Must only be called once the write-off succeeded;
+    /// callers must not call this if the debit failed or is unconfirmed.
+    /// </summary>
+    /// <exception cref="InvoiceAlreadyClosedException">The invoice is already <see cref="InvoiceStatus.Closed"/>.</exception>
+    public void Close(DateTime closedAtUtc)
+    {
+        if (Status == InvoiceStatus.Closed)
+        {
+            throw new InvoiceAlreadyClosedException(Id);
+        }
+
+        Status = InvoiceStatus.Closed;
+        ClosedAtUtc = closedAtUtc;
     }
 }

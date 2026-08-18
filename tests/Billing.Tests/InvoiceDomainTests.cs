@@ -53,4 +53,71 @@ public class InvoiceDomainTests
         Assert.Equal("Gadget", item.ProductDescription);
         Assert.Equal(5, item.Quantity);
     }
+
+    [Fact]
+    public void PrepareForPrint_On_Open_Invoice_Assigns_OperationId()
+    {
+        // Arrange
+        var invoice = Invoice.Create([InvoiceItem.Create(1, "SKU-1", "Widget", 2)]);
+        Assert.Null(invoice.OperationId);
+
+        // Act
+        var operationId = invoice.PrepareForPrint();
+
+        // Assert
+        Assert.NotEqual(Guid.Empty, operationId);
+        Assert.Equal(operationId, invoice.OperationId);
+    }
+
+    [Fact]
+    public void PrepareForPrint_Called_Twice_Reuses_Same_OperationId()
+    {
+        // Arrange: simulates a retried print request for the same invoice.
+        var invoice = Invoice.Create([InvoiceItem.Create(1, "SKU-1", "Widget", 2)]);
+
+        // Act
+        var first = invoice.PrepareForPrint();
+        var second = invoice.PrepareForPrint();
+
+        // Assert
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void PrepareForPrint_On_Closed_Invoice_Throws_InvoiceAlreadyClosedException()
+    {
+        // Arrange
+        var invoice = Invoice.Create([InvoiceItem.Create(1, "SKU-1", "Widget", 2)]);
+        invoice.PrepareForPrint();
+        invoice.Close(DateTime.UtcNow);
+
+        // Act & Assert
+        Assert.Throws<InvoiceAlreadyClosedException>(() => invoice.PrepareForPrint());
+    }
+
+    [Fact]
+    public void Close_Sets_Status_And_ClosedAtUtc()
+    {
+        // Arrange
+        var invoice = Invoice.Create([InvoiceItem.Create(1, "SKU-1", "Widget", 2)]);
+        var closedAt = DateTime.UtcNow;
+
+        // Act
+        invoice.Close(closedAt);
+
+        // Assert
+        Assert.Equal(InvoiceStatus.Closed, invoice.Status);
+        Assert.Equal(closedAt, invoice.ClosedAtUtc);
+    }
+
+    [Fact]
+    public void Close_On_Already_Closed_Invoice_Throws_InvoiceAlreadyClosedException()
+    {
+        // Arrange
+        var invoice = Invoice.Create([InvoiceItem.Create(1, "SKU-1", "Widget", 2)]);
+        invoice.Close(DateTime.UtcNow);
+
+        // Act & Assert
+        Assert.Throws<InvoiceAlreadyClosedException>(() => invoice.Close(DateTime.UtcNow));
+    }
 }

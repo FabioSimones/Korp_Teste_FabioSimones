@@ -11,11 +11,13 @@ public class InvoiceService : IInvoiceService
 
     private readonly BillingDbContext _dbContext;
     private readonly IInventoryProductClient _inventoryClient;
+    private readonly IInventoryStockClient _stockClient;
 
-    public InvoiceService(BillingDbContext dbContext, IInventoryProductClient inventoryClient)
+    public InvoiceService(BillingDbContext dbContext, IInventoryProductClient inventoryClient, IInventoryStockClient stockClient)
     {
         _dbContext = dbContext;
         _inventoryClient = inventoryClient;
+        _stockClient = stockClient;
     }
 
     public async Task<InvoiceResponse> CreateAsync(CreateInvoiceRequest request, CancellationToken cancellationToken)
@@ -90,6 +92,7 @@ public class InvoiceService : IInvoiceService
                 i.Number,
                 i.Status.ToString(),
                 i.CreatedAtUtc,
+                i.ClosedAtUtc,
                 i.Items
                     .Select(it => new InvoiceItemResponse(it.Id, it.ProductId, it.ProductCode, it.ProductDescription, it.Quantity))
                     .ToList()))
@@ -106,6 +109,7 @@ public class InvoiceService : IInvoiceService
                 i.Number,
                 i.Status.ToString(),
                 i.CreatedAtUtc,
+                i.ClosedAtUtc,
                 i.Items
                     .Select(it => new InvoiceItemResponse(it.Id, it.ProductId, it.ProductCode, it.ProductDescription, it.Quantity))
                     .ToList()))
@@ -114,12 +118,50 @@ public class InvoiceService : IInvoiceService
         return invoice ?? throw new InvoiceNotFoundException(id);
     }
 
+    public async Task<InvoiceResponse> PrintAsync(int id, CancellationToken cancellationToken)
+    {
+        var invoice = await _dbContext.Invoices
+            .Include(i => i.Items)
+            .FirstOrDefaultAsync(i => i.Id == id, cancellationToken);
+
+        if (invoice is null)
+        {
+            throw new InvoiceNotFoundException(id);
+        }
+
+        // Validates the invoice is still Open and reserves/reuses the
+        // OperationId used for the stock debit call.
+        var operationId = invoice.PrepareForPrint();
+
+        // Persisted before calling Inventory so a crash or failure between a
+        // successful debit and closing the invoice does not lose the
+        // reserved OperationId: a retry reuses it, and Inventory's own
+        // idempotency (keyed by OperationId) guarantees the balances are not
+        // debited a second time.
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var debitRequest = new StockDebitRequestDto(
+            operationId,
+            invoice.Items.Select(it => new StockDebitItemRequestDto(it.ProductId, it.Quantity)).ToList());
+
+        // Any failure here (validation, missing product, insufficient
+        // balance, or Inventory being unavailable) propagates to the caller
+        // without closing the invoice, which stays Open for a retry.
+        await _stockClient.DebitAsync(debitRequest, cancellationToken);
+
+        invoice.Close(DateTime.UtcNow);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return ToResponse(invoice);
+    }
+
     private static InvoiceResponse ToResponse(Invoice invoice) =>
         new(
             invoice.Id,
             invoice.Number,
             invoice.Status.ToString(),
             invoice.CreatedAtUtc,
+            invoice.ClosedAtUtc,
             invoice.Items
                 .Select(it => new InvoiceItemResponse(it.Id, it.ProductId, it.ProductCode, it.ProductDescription, it.Quantity))
                 .ToList());

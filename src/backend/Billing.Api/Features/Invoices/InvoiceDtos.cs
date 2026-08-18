@@ -14,11 +14,13 @@ public record InvoiceItemResponse(int Id, int ProductId, string ProductCode, str
 
 /// <summary>
 /// Invoice data returned by the API. Never exposes the EF Core entity
-/// directly.
+/// directly. <see cref="ClosedAtUtc"/> is <c>null</c> while the invoice is
+/// <c>Open</c> and set once printing confirms the stock write-off.
 /// </summary>
 public record InvoiceResponse(
     int Id,
     int Number,
     string Status,
     DateTime CreatedAtUtc,
+    DateTime? ClosedAtUtc,
     IReadOnlyList<InvoiceItemResponse> Items);

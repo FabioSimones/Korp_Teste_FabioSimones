@@ -89,6 +89,63 @@ public class InvoicesController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Prints an open invoice: orchestrates the atomic stock debit with the
+    /// Inventory service and, only after it is confirmed, closes the
+    /// invoice. If the invoice is already closed, unknown, or the stock
+    /// debit fails/is rejected, the invoice is left unchanged and an error
+    /// is returned; retrying reuses the same debit operation and therefore
+    /// never duplicates the write-off.
+    /// </summary>
+    [HttpPost("{id:int}/print")]
+    [ProducesResponseType(typeof(InvoiceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<InvoiceResponse>> Print(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var printed = await _invoiceService.PrintAsync(id, cancellationToken);
+            return Ok(printed);
+        }
+        catch (InvoiceNotFoundException ex)
+        {
+            return NotFound(BuildProblem(
+                "Invoice not found.",
+                StatusCodes.Status404NotFound,
+                ex.Message));
+        }
+        catch (InvoiceAlreadyClosedException ex)
+        {
+            return Conflict(BuildProblem(
+                "Invoice already closed.",
+                StatusCodes.Status409Conflict,
+                ex.Message));
+        }
+        catch (InvoiceProductNotFoundException ex)
+        {
+            return NotFound(BuildProblem(
+                "Product not found.",
+                StatusCodes.Status404NotFound,
+                ex.Message));
+        }
+        catch (InsufficientStockBalanceException ex)
+        {
+            return Conflict(BuildProblem(
+                "Insufficient stock balance.",
+                StatusCodes.Status409Conflict,
+                ex.Message));
+        }
+        catch (InventoryServiceUnavailableException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, BuildProblem(
+                "Inventory service unavailable.",
+                StatusCodes.Status503ServiceUnavailable,
+                ex.Message));
+        }
+    }
+
     private ValidationProblemDetails BuildValidationProblem(InvoiceValidationException ex)
     {
         var problem = new ValidationProblemDetails

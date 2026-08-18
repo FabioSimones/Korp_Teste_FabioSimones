@@ -60,9 +60,9 @@ public class DuplicateInvoiceNumberException : Exception
 
 /// <summary>
 /// Thrown when the Inventory service is unreachable, times out, or returns an
-/// unexpected error while validating products for a new invoice. Maps to
-/// HTTP 503, since the Billing service depends on Inventory being available
-/// to create invoices.
+/// unexpected error while validating products for a new invoice or debiting
+/// stock during printing. Maps to HTTP 503, since the Billing service
+/// depends on Inventory being available for both flows.
 /// </summary>
 public class InventoryServiceUnavailableException : Exception
 {
@@ -73,6 +73,36 @@ public class InventoryServiceUnavailableException : Exception
 
     public InventoryServiceUnavailableException(string message, Exception innerException)
         : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>
+/// Thrown when <c>POST /api/invoices/{id}/print</c> is requested for an
+/// invoice that is already <see cref="InvoiceStatus.Closed"/>. Maps to HTTP
+/// 409, since printing is only allowed for open invoices.
+/// </summary>
+public class InvoiceAlreadyClosedException : Exception
+{
+    public int Id { get; }
+
+    public InvoiceAlreadyClosedException(int id)
+        : base($"Invoice '{id}' is already closed.")
+    {
+        Id = id;
+    }
+}
+
+/// <summary>
+/// Thrown when the Inventory service rejects a stock debit requested during
+/// printing because the balance of one or more products is insufficient.
+/// Maps to HTTP 409; the invoice is left <see cref="InvoiceStatus.Open"/> so
+/// the caller can retry after the balance is corrected.
+/// </summary>
+public class InsufficientStockBalanceException : Exception
+{
+    public InsufficientStockBalanceException(string message)
+        : base(message)
     {
     }
 }
