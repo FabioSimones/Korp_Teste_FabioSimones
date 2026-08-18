@@ -42,3 +42,28 @@ public class ProductNotFoundException : Exception
         Id = id;
     }
 }
+
+/// <summary>
+/// Thrown when a stock debit would take a product's balance below zero.
+/// Enforces the "balance can never be negative" invariant at the domain
+/// level (in addition to the database check constraint). Maps to HTTP 409.
+/// </summary>
+public class InsufficientProductBalanceException : Exception
+{
+    public int ProductId { get; }
+
+    public string Code { get; }
+
+    public int AvailableBalance { get; }
+
+    public int RequestedQuantity { get; }
+
+    public InsufficientProductBalanceException(int productId, string code, int availableBalance, int requestedQuantity)
+        : base($"Product '{code}' has insufficient balance. Available: {availableBalance}, requested: {requestedQuantity}.")
+    {
+        ProductId = productId;
+        Code = code;
+        AvailableBalance = availableBalance;
+        RequestedQuantity = requestedQuantity;
+    }
+}

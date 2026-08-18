@@ -61,4 +61,55 @@ public class ProductDomainTests
         // Assert
         Assert.Equal(0, product.Balance);
     }
+
+    [Fact]
+    public void Debit_With_Sufficient_Balance_Decreases_Balance()
+    {
+        // Arrange
+        var product = Product.Create("SKU-001", "Widget", 10);
+
+        // Act
+        product.Debit(4);
+
+        // Assert
+        Assert.Equal(6, product.Balance);
+    }
+
+    [Fact]
+    public void Debit_With_Balance_Exactly_Equal_To_Quantity_Reaches_Zero()
+    {
+        // Arrange
+        var product = Product.Create("SKU-001", "Widget", 5);
+
+        // Act
+        product.Debit(5);
+
+        // Assert
+        Assert.Equal(0, product.Balance);
+    }
+
+    [Fact]
+    public void Debit_With_Insufficient_Balance_Throws_InsufficientProductBalanceException_And_Does_Not_Mutate_Balance()
+    {
+        // Arrange
+        var product = Product.Create("SKU-001", "Widget", 3);
+
+        // Act & Assert
+        var ex = Assert.Throws<InsufficientProductBalanceException>(() => product.Debit(4));
+        Assert.Equal(3, ex.AvailableBalance);
+        Assert.Equal(4, ex.RequestedQuantity);
+        Assert.Equal(3, product.Balance);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Debit_With_NonPositive_Quantity_Throws_ArgumentOutOfRangeException(int quantity)
+    {
+        // Arrange
+        var product = Product.Create("SKU-001", "Widget", 10);
+
+        // Act & Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() => product.Debit(quantity));
+    }
 }

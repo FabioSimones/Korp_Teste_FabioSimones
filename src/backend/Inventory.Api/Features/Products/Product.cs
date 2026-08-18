@@ -60,4 +60,25 @@ public class Product
 
         return new Product(normalizedCode!, normalizedDescription!, balance);
     }
+
+    /// <summary>
+    /// Debits the given quantity from the product's balance, enforcing the
+    /// domain invariant that balance can never go negative. Throws
+    /// <see cref="InsufficientProductBalanceException"/> when the current
+    /// balance is not enough to cover the requested quantity.
+    /// </summary>
+    public void Debit(int quantity)
+    {
+        if (quantity <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be greater than zero.");
+        }
+
+        if (Balance < quantity)
+        {
+            throw new InsufficientProductBalanceException(Id, Code, Balance, quantity);
+        }
+
+        Balance -= quantity;
+    }
 }

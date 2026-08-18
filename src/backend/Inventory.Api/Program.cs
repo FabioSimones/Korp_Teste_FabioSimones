@@ -1,5 +1,6 @@
 using Inventory.Api.Data;
 using Inventory.Api.Features.Products;
+using Inventory.Api.Features.Stock;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 
@@ -40,6 +41,7 @@ builder.Services.AddProblemDetails(options =>
 builder.Services.AddHealthChecks();
 
 builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<IStockDebitService, StockDebitService>();
 
 // CORS: origem permitida configurável via "Cors:AllowedOrigins" (appsettings ou
 // variável de ambiente Cors__AllowedOrigins__0), sem AllowAnyOrigin/AllowCredentials.
