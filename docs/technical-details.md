@@ -153,6 +153,7 @@ Introduzido na Task 04, seguindo o padrão adotado para os demais microsserviço
 - Exceções de domínio (`Inventory.Api/Features/Products/ProductExceptions.cs`): `ProductValidationException` (dados inválidos), `DuplicateProductCodeException` (código já cadastrado), `ProductNotFoundException` (id inexistente). São lançadas pela camada de serviço/domínio, nunca pelo controller.
 - `ProductsController` captura essas exceções e mapeia para HTTP: `ProductValidationException` → 400 (`ValidationProblemDetails`, com a lista de erros em `Errors["product"]`), `DuplicateProductCodeException` → 409, `ProductNotFoundException` → 404. Todas as respostas incluem `traceId` nas `Extensions`.
 - Duplicidade de código é protegida em dois níveis: checagem LINQ prévia (`AnyAsync`) e, como rede de segurança contra condição de corrida, captura de `DbUpdateException` cuja causa é `PostgresException` com `SqlState 23505` (violação do índice único em `Code`) — ambos os caminhos resultam em `DuplicateProductCodeException`/409.
+- Task 08 (`Inventory.Api/Features/Stock/StockExceptions.cs` e `Features/Products/ProductExceptions.cs`): `StockDebitValidationException` (payload de baixa inválido: `OperationId` vazio, lista de itens vazia, `ProductId` ≤ 0, produto duplicado no mesmo pedido, `Quantity` ≤ 0) → 400; `ProductNotFoundException` (produto referenciado na baixa não existe) → 404; `InsufficientProductBalanceException` (saldo do produto insuficiente para a quantidade pedida) → 409. `StockController` segue o mesmo padrão de `ProductsController`: captura essas exceções e monta `ValidationProblemDetails`/`ProblemDetails` com `traceId` em `Extensions`, sem lógica de negócio no controller.
 
 ## Persistência
 
@@ -163,20 +164,85 @@ Introduzido na Task 04, seguindo o padrão adotado para os demais microsserviço
 - A connection string é lida de `ConnectionStrings:InventoryDb`/`ConnectionStrings:BillingDb` na configuração padrão do ASP.NET Core. `appsettings.json` traz apenas um valor de exemplo não funcional (`Password=changeme`), com o usuário específico de cada serviço (`inventory_user` / `billing_user`); nenhuma credencial real é versionada.
 - Cada serviço mantém um usuário PostgreSQL próprio: `Inventory.Api` usa `inventory_user`, `Billing.Api` usa `billing_user` — evitando um usuário compartilhado entre os bancos, mesmo sendo instâncias/containers distintos.
 - As senhas reais de desenvolvimento existem em apenas dois lugares, nenhum deles versionado: o arquivo `.env` local (consumido pelo `docker-compose.yml`) e User Secrets do .NET (`dotnet user-secrets`, chave `ConnectionStrings:InventoryDb` / `ConnectionStrings:BillingDb`, configurada manualmente por cada desenvolvedor). `Inventory.Api.csproj` e `Billing.Api.csproj` possuem um `UserSecretsId` versionado — esse identificador é apenas uma referência ao arquivo `secrets.json` local do usuário (armazenado fora do repositório, no perfil do SO) e não contém nenhuma credencial.
-- Migrations: cada serviço tem sua própria pasta `Data/Migrations`. Cada serviço partiu de uma migration inicial vazia (`InitialCreate`, sem operações `Up`/`Down`). Na Task 04, `Inventory.Api` recebeu a migration `AddProducts` (`dotnet ef migrations add AddProducts --output-dir Data/Migrations`), que cria a tabela `products` com índice único em `Code`; `Billing.Api` permanece apenas com `InitialCreate`. A aplicação das migrations é explícita via `dotnet ef database update` (não há `Database.Migrate()` automático no `Program.cs`).
-- Transações: ainda não aplicável nesta task (sem entidades/regras de negócio). Serão descritas quando a baixa de estoque atômica for implementada.
+- Migrations: cada serviço tem sua própria pasta `Data/Migrations`. Cada serviço partiu de uma migration inicial vazia (`InitialCreate`, sem operações `Up`/`Down`). Na Task 04, `Inventory.Api` recebeu a migration `AddProducts` (`dotnet ef migrations add AddProducts --output-dir Data/Migrations`), que cria a tabela `products` com índice único em `Code`; `Billing.Api` permanece apenas com `InitialCreate`. Na Task 08, `Inventory.Api` recebeu a migration `AddStockDebits` (`Data/Migrations/20260817223056_AddStockDebits.cs`), que cria `stock_debit_operations` e `stock_debit_operation_items` e adiciona a check constraint `CK_products_balance_non_negative` em `products` — ver "Baixa de estoque (Inventory.Api)" para detalhes. A aplicação das migrations é explícita via `dotnet ef database update` (não há `Database.Migrate()` automático no `Program.cs`; os testes de integração aplicam as migrations via `dbContext.Database.MigrateAsync()` no `WebApplicationFactory`).
+- Transações: introduzidas na Task 08 para a baixa de estoque (`StockDebitService.DebitAsync`), via `_dbContext.Database.BeginTransactionAsync`/`CommitAsync` explícitos — ver "Baixa de estoque (Inventory.Api)".
 
-## Falhas e recuperação
+## Baixa de estoque (Inventory.Api, Task 08)
 
-Descrever timeout, retry, circuit breaker, feedback ao usuário e manutenção da nota aberta.
+Endpoint `POST /api/stock/debits` (`Inventory.Api/Features/Stock/StockController.cs`), único ponto de entrada para baixar saldo de um ou mais produtos de forma atômica e idempotente.
+
+**Requisição** (`StockDebitRequest`):
+
+```json
+{
+  "operationId": "guid",
+  "items": [
+    { "productId": 1, "quantity": 5 }
+  ]
+}
+```
+
+- `operationId`: `Guid` fornecido pelo chamador (tipicamente o Faturamento), identifica a solicitação de baixa para fins de idempotência. Não pode ser `Guid.Empty`.
+- `items`: lista não vazia de pares produto/quantidade. `productId` deve ser maior que zero e não pode se repetir dentro do mesmo pedido; `quantity` deve ser maior que zero.
+
+**Resposta da primeira execução** — `200 OK` com `StockDebitResponse`:
+
+```json
+{
+  "operationId": "guid",
+  "items": [
+    { "productId": 1, "productCode": "SKU-001", "quantityDebited": 5, "balanceAfter": 3 }
+  ]
+}
+```
+
+Os saldos resultantes (`balanceAfter`) refletem a baixa já aplicada e persistida. A resposta nunca expõe a entidade `Product`/`StockDebitOperation` diretamente — é montada a partir de DTOs dedicados (`Features/Stock/StockDtos.cs`).
+
+**Resposta do replay idempotente** — também `200 OK`, com o mesmo corpo (`StockDebitResponse`) devolvido na primeira execução para aquele `operationId`, reconstruído a partir dos dados persistidos (`StockDebitService.FindExistingOperationAsync`), sem debitar o saldo novamente.
+
+### Transação e atomicidade
+
+`StockDebitService.DebitAsync` (`Features/Stock/StockDebitService.cs`) processa a baixa em duas fases:
+
+1. **Validação em memória, antes de qualquer mutação**: os produtos referenciados são carregados (`_dbContext.Products.Where(...)`, com tracking, pois os saldos serão alterados); se algum `productId` não existir, `ProductNotFoundException` é lançada imediatamente — nenhuma entidade foi alterada até esse ponto. Em seguida, cada item é debitado em memória via `Product.Debit(quantity)`; se algum produto não tiver saldo suficiente, `InsufficientProductBalanceException` é lançada assim que esse item é processado, e nenhum `SaveChangesAsync` ainda ocorreu — logo, produtos já debitados anteriormente no mesmo laço (em memória) nunca chegam a ser persistidos.
+2. **Persistência atômica**: a operação (`StockDebitOperation`) e seus itens (`StockDebitOperationItem`) são adicionados ao contexto e persistidos junto com os saldos atualizados dos produtos em uma única chamada `SaveChangesAsync`, dentro de uma transação explícita (`_dbContext.Database.BeginTransactionAsync` ... `CommitAsync`). Se a transação não for commitada (por exceção de validação/saldo insuficiente lançada antes do `SaveChangesAsync`, ou por qualquer falha durante ele), nada é persistido — nem os saldos dos produtos, nem a operação, nem os itens.
+
+Produto inexistente ou saldo insuficiente em **qualquer** item do pedido impede a operação inteira: não há baixa parcial de alguns produtos e falha de outros. Isso é coberto pelos testes de integração `Debit_With_Unknown_Product_Returns_NotFound_And_No_Partial_Effects` e `Debit_With_Insufficient_Balance_In_One_Item_Rolls_Back_All_Products` (`tests/Inventory.Tests/StockApiTests.cs`), que verificam contra PostgreSQL real que nenhum saldo foi alterado após a falha.
+
+Concorrência entre requisições com `OperationId` **diferentes** disputando o saldo do mesmo produto ao mesmo tempo não é tratada nesta task — ver "Limitações conhecidas".
+
+### Modelo de persistência
+
+Tabelas criadas pela migration `AddStockDebits` (`InventoryDbContext.OnModelCreating`):
+
+- `stock_debit_operations`: `Id` (PK, identity), `OperationId` (`uuid`, com índice único `IX_stock_debit_operations_OperationId`), `CreatedAtUtc` (`timestamp with time zone`).
+- `stock_debit_operation_items`: `Id` (PK, identity), `StockDebitOperationId` (FK para `stock_debit_operations.Id`, `ON DELETE CASCADE`, com índice `IX_stock_debit_operation_items_StockDebitOperationId`), `ProductId`, `ProductCode` (`varchar(64)`), `Quantity`, `BalanceAfter`.
+- Cada `StockDebitOperationItem` guarda um **snapshot** de `ProductCode` e `BalanceAfter` no momento da baixa (não uma referência viva ao produto), para que o replay idempotente devolva sempre o mesmo resultado mesmo que o produto seja alterado depois (`StockDebitOperation.AddItem`).
+
+CHECK constraints confirmadas na migration/`InventoryDbContext`:
+
+- `CK_products_balance_non_negative` em `products`: `"Balance" >= 0` (adicionada por esta migration à tabela existente, reforçando no banco o invariante de domínio de `Product.Debit`).
+- `CK_stock_debit_operation_items_quantity_positive` em `stock_debit_operation_items`: `"Quantity" > 0`.
 
 ## Idempotência
 
-Descrever `OperationId`, restrição única e comportamento de repetição.
+- `OperationId` (`Guid`, fornecido pelo chamador) identifica unicamente uma solicitação de baixa. É persistido em `stock_debit_operations.OperationId`, com índice único no banco (`IX_stock_debit_operations_OperationId`, criado por `entity.HasIndex(o => o.OperationId).IsUnique()` em `InventoryDbContext`).
+- Antes de processar qualquer baixa, `StockDebitService.DebitAsync` verifica se já existe uma `StockDebitOperation` com aquele `OperationId` (`FindExistingOperationAsync`). Se existir, o resultado armazenado é devolvido imediatamente, sem tocar em nenhum saldo.
+- A primeira execução para um `OperationId` inédito efetua o desconto nos produtos e persiste o resultado (operação + itens) na mesma transação descrita acima.
+- Repetições do mesmo `OperationId` retornam o resultado armazenado com `200 OK`; o saldo não é descontado novamente. Coberto por `Repeating_Same_OperationId_Does_Not_Debit_Twice_And_Returns_Same_Result`.
+- **Decisão específica deste projeto** — reutilização do mesmo `OperationId` com um payload de itens diferente do original: o resultado da primeira execução prevalece, o novo payload é ignorado e nenhum novo desconto é realizado (o pedido nem chega a validar os novos itens contra os produtos). Não é uma regra genérica de idempotência HTTP, é o comportamento implementado e testado neste serviço, coberto por `Repeating_Same_OperationId_With_Different_Items_Still_Returns_Original_Result`.
+- Proteção contra corrida: como a checagem de existência e a inserção não são atômicas entre si (duas requisições concorrentes com o mesmo `OperationId` podem ambas passar pela checagem antes de qualquer uma commitar), o índice único no banco é a garantia final. Se o `SaveChangesAsync` de uma requisição falhar por violação de unicidade (`DbUpdateException` cuja causa é `PostgresException` com `SqlState 23505`), a transação dessa requisição é revertida e o resultado da operação vencedora (já persistida pela requisição concorrente) é buscado e devolvido no lugar (`StockDebitService.DebitAsync`, bloco `catch (DbUpdateException ex) when (IsUniqueViolation(ex))`). Não há um teste automatizado que dispare esse caminho por meio de requisições concorrentes reais (ver "Testes" e "Limitações conhecidas"); a garantia vem do índice único do banco e da lógica de tratamento da exceção, revisados por inspeção de código.
 
 ## Concorrência
 
-Descrever mecanismo implementado e teste com saldo 1.
+A única forma de concorrência tratada nesta task é a repetição do mesmo `OperationId` (idempotência, descrita acima), incluindo o caso de corrida em que duas requisições com o mesmo `OperationId` chegam simultaneamente — protegido pelo índice único e pelo tratamento de `DbUpdateException` descritos em "Idempotência".
+
+Concorrência entre requisições com `OperationId` diferentes que disputam o saldo do mesmo produto (ex.: duas baixas simultâneas contra um produto com saldo 1) não foi implementada nem testada nesta task — ver "Limitações conhecidas".
+
+### Domínio
+
+- `Product.Debit(quantity)` (`Features/Products/Product.cs`) é o único ponto que altera `Product.Balance`. Garante que o saldo nunca fica negativo: se `quantity > Balance`, lança `InsufficientProductBalanceException` (produto, saldo disponível e quantidade pedida) sem alterar `Balance`; se `quantity <= 0`, lança `ArgumentOutOfRangeException` (checagem defensiva do invariante do domínio — na prática, quantidades não positivas já são rejeitadas antes, na validação do pedido em `StockDebitService.ValidateRequest`, então esse caminho normalmente não é alcançado via HTTP).
+- Separação de responsabilidades: a regra de negócio "saldo nunca negativo" vive inteiramente em `Product` (domínio); `StockDebitService` orquestra validação do pedido, carregamento dos produtos, transação e persistência; `StockController` é uma camada HTTP fina que apenas traduz o resultado e as exceções de domínio/serviço em respostas HTTP — nenhuma regra de negócio está no controller.
 
 ## Testes
 
@@ -188,8 +254,13 @@ Descrever mecanismo implementado e teste com saldo 1.
   - `InventoryDbContextConnectivityTests.cs`: conectividade do `DbContext` e mapeamento das entidades registradas.
   - `CorsApiTests.cs` (correção de integração pós-Task 04): preflight `OPTIONS /api/products` liberado para `http://localhost:4200` (com métodos/headers corretos), preflight não reflete origem não autorizada, e `GET /api/products` com origem autorizada retorna `Access-Control-Allow-Origin` exato.
 - `Billing.Tests` também possui `CorsApiTests.cs` (correção de integração pós-Task 06, mesmo padrão do `Inventory.Tests`): preflight `OPTIONS /api/invoices` liberado para `http://localhost:4200` (com métodos/headers corretos), preflight não reflete origem não autorizada, e `GET /api/invoices` com origem autorizada retorna `Access-Control-Allow-Origin` exato.
+- Cobertura da Task 08 (`Inventory.Tests`):
+  - `ProductDomainTests.cs` (unitários, sem banco): `Product.Debit` com saldo suficiente (decrementa), saldo exatamente igual à quantidade (chega a zero), saldo insuficiente (lança `InsufficientProductBalanceException` e não altera `Balance`), quantidade não positiva (lança `ArgumentOutOfRangeException`).
+  - `StockApiTests.cs` (integração ponta a ponta via `WebApplicationFactory<Program>`, contra PostgreSQL real via Testcontainers, migrations aplicadas no `InitializeAsync`): baixa exata até saldo zero; baixa de múltiplos produtos no mesmo pedido; produto inexistente retorna 404 sem efeito parcial; quantidade não positiva (0 e negativa) retorna 400; `OperationId` vazio retorna 400; lista de itens vazia retorna 400; saldo insuficiente em um dos itens retorna 409 e reverte (rollback real, comprovado contra o container) o saldo de **ambos** os produtos do pedido; repetição do mesmo `OperationId` não debita duas vezes e devolve o mesmo resultado; repetição do mesmo `OperationId` com itens diferentes ainda devolve o resultado original (sem novo débito); persistência física da operação e do item verificada por um `DbContext` independente, lendo diretamente do container.
+  - Não há, nesta task, um teste automatizado que dispare duas requisições HTTP concorrentes de verdade (em threads/tasks paralelas) contra o mesmo produto ou o mesmo `OperationId`; o caminho de tratamento de corrida por violação de unicidade (`catch (DbUpdateException ex) when (IsUniqueViolation(ex))` em `StockDebitService`) existe no código e foi revisado por inspeção, mas não é exercitado por teste automatizado nem foi objeto de um roteiro manual de concorrência registrado — ver "Limitações conhecidas".
 
 ## Limitações conhecidas
 
-Registrar somente limitações reais da entrega final.
+- Concorrência simultânea entre baixas distintas (`OperationId` diferentes) disputando o saldo do mesmo produto ainda não foi implementada nem testada: o mecanismo atual (transação explícita por requisição + check constraint `CK_products_balance_non_negative` no banco) evita saldo negativo mesmo sob corrida, mas não há tratamento dedicado (ex.: lock otimista/pessimista) nem teste automatizado simulando duas baixas simultâneas contra um produto com saldo baixo (ex.: saldo 1). Fica reservado para uma tarefa futura dedicada a concorrência.
+- O tratamento de corrida para requisições com o **mesmo** `OperationId` chegando simultaneamente (violação do índice único capturada como `DbUpdateException`) existe no código da Task 08, mas não é exercitado por um teste automatizado com requisições paralelas reais — apenas revisado por inspeção.
 
