@@ -1,4 +1,7 @@
-<section class="invoice-detail-page" aria-labelledby="invoice-detail-title">
+<section
+  class="invoice-detail-page invoice-detail-page__no-print"
+  aria-labelledby="invoice-detail-title"
+>
   <div class="invoice-detail-page__header">
     <h1 id="invoice-detail-title">Detalhes da nota</h1>
     <a mat-stroked-button routerLink="/notas">Voltar para a listagem</a>
@@ -32,7 +35,43 @@
             <span class="invoice-detail-page__label">Status</span>
             <app-invoice-status-badge [status]="loadedInvoice.status" />
           </div>
+          @if (loadedInvoice.closedAtUtc) {
+            <div>
+              <span class="invoice-detail-page__label">Fechada em</span>
+              <span class="invoice-detail-page__value">
+                {{ loadedInvoice.closedAtUtc | date: 'dd/MM/yyyy HH:mm' }}
+              </span>
+            </div>
+          }
         </div>
+
+        <div class="invoice-detail-page__actions">
+          <button
+            mat-raised-button
+            color="primary"
+            type="button"
+            [disabled]="!canPrint() || printing()"
+            (click)="print()"
+          >
+            @if (printing()) {
+              <mat-progress-spinner
+                diameter="18"
+                mode="indeterminate"
+                aria-hidden="true"
+              ></mat-progress-spinner>
+              <span>Imprimindo...</span>
+            } @else {
+              <span>Imprimir</span>
+            }
+          </button>
+          @if (!canPrint()) {
+            <span class="invoice-detail-page__hint">Esta nota já está fechada.</span>
+          }
+        </div>
+
+        @if (printError()) {
+          <p class="invoice-detail-page__print-error" role="alert">{{ printError() }}</p>
+        }
 
         <h2 class="invoice-detail-page__items-title">Itens</h2>
 
@@ -70,3 +109,7 @@
     </mat-card-content>
   </mat-card>
 </section>
+
+@if (invoice(); as printableInvoice) {
+  <app-invoice-print-view [invoice]="printableInvoice" />
+}

@@ -37,3 +37,14 @@ body {
   height: 100%;
 }
 /* You can add global styles to this file, and also import other style files */
+
+// Global print rule: hides the app shell chrome (sidenav + toolbar) so
+// window.print() (triggered after a successful invoice print/close, see
+// invoice-detail-page) shows only the printable content of the active
+// route (e.g. app-invoice-print-view), not the surrounding navigation.
+@media print {
+  .shell__sidenav,
+  .shell__toolbar {
+    display: none !important;
+  }
+}

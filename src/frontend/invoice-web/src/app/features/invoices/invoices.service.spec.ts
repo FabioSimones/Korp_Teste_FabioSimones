@@ -16,6 +16,7 @@ describe('InvoicesService', () => {
     number: 1001,
     status: 'Open',
     createdAtUtc: '2026-08-17T10:00:00Z',
+    closedAtUtc: null,
     items: [
       { id: 1, productId: 1, productCode: 'A1', productDescription: 'Produto A', quantity: 2 },
     ],
@@ -68,5 +69,22 @@ describe('InvoicesService', () => {
     req.flush(sampleInvoice, { status: 201, statusText: 'Created' });
 
     expect(result).toEqual(sampleInvoice);
+  });
+
+  it('should POST to the print endpoint and return the closed invoice', () => {
+    const closedInvoice: Invoice = {
+      ...sampleInvoice,
+      status: 'Closed',
+      closedAtUtc: '2026-08-18T10:00:00Z',
+    };
+
+    let result: Invoice | undefined;
+    service.print(1).subscribe((response) => (result = response));
+
+    const req = httpMock.expectOne(`${baseUrl}/1/print`);
+    expect(req.request.method).toBe('POST');
+    req.flush(closedInvoice);
+
+    expect(result).toEqual(closedInvoice);
   });
 });

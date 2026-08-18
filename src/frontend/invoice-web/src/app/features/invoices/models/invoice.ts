@@ -1,7 +1,7 @@
 /**
- * Lifecycle status of an invoice, as returned by Billing.Api. `Closed`
- * invoices are read-only here; the print/close flow is out of scope for
- * this feature.
+ * Lifecycle status of an invoice, as returned by Billing.Api. An invoice
+ * transitions `Open` -> `Closed` exactly once, via the print/close flow
+ * (`POST /api/invoices/{id}/print`); `Closed` invoices are read-only here.
  */
 export type InvoiceStatus = 'Open' | 'Closed';
 
@@ -25,6 +25,8 @@ export interface Invoice {
   readonly number: number;
   readonly status: InvoiceStatus;
   readonly createdAtUtc: string;
+  /** Set once printing confirms the stock write-off; `null` while `Open`. */
+  readonly closedAtUtc: string | null;
   readonly items: readonly InvoiceItem[];
 }
 

@@ -32,4 +32,13 @@ export class InvoicesService {
   create(request: CreateInvoiceRequest): Observable<Invoice> {
     return this.http.post<Invoice>(this.baseUrl, request, { context: this.context });
   }
+
+  // The print screen renders its own status-specific messages for 404/409/503
+  // (see invoice-detail-page), so the generic interceptor notification is
+  // skipped here too, same as the other calls in this service.
+  print(id: number): Observable<Invoice> {
+    return this.http.post<Invoice>(`${this.baseUrl}/${id}/print`, null, {
+      context: this.context,
+    });
+  }
 }

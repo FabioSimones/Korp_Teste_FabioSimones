@@ -16,7 +16,7 @@ Os commits correspondentes a cada task devem ser consultados com `git log --onel
 | 07 | Notas no frontend | Concluída |
 | 08 | Baixa transacional e idempotente | Concluída |
 | 09 | Impressão e fechamento no backend | Concluída |
-| 10 | Impressão no frontend | Pendente |
+| 10 | Impressão no frontend | Concluída |
 | 11 | Resiliência e falha obrigatória | Pendente |
 | 12 | Concorrência opcional | Pendente |
 | 13 | Qualidade, documentação e entrega | Pendente |

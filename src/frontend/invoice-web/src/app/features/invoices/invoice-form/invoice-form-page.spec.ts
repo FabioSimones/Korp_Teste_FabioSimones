@@ -137,6 +137,7 @@ describe('InvoiceFormPage', () => {
       number: 100,
       status: 'Open',
       createdAtUtc: '2026-08-17T10:00:00Z',
+      closedAtUtc: null,
       items: [
         { id: 1, productId: 1, productCode: 'A1', productDescription: 'Produto A', quantity: 2 },
         { id: 2, productId: 2, productCode: 'B2', productDescription: 'Produto B', quantity: 1 },

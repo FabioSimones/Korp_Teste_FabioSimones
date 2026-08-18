@@ -1,0 +1,39 @@
+// Hidden by default: this view exists solely for `window.print()` output.
+// invoice-detail-page.scss complements this by hiding the interactive
+// screen content (`.invoice-detail-page__no-print`) inside `@media print`.
+:host {
+  display: none;
+}
+
+@media print {
+  :host {
+    display: block;
+  }
+}
+
+.invoice-print-view__header {
+  margin-bottom: 16px;
+}
+
+.invoice-print-view__meta {
+  display: flex;
+  gap: 32px;
+  margin-bottom: 16px;
+}
+
+.invoice-print-view__meta div {
+  display: flex;
+  flex-direction: column;
+}
+
+.invoice-print-view__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.invoice-print-view__table th,
+.invoice-print-view__table td {
+  border: 1px solid #000;
+  padding: 4px 8px;
+  text-align: left;
+}

@@ -22,6 +22,7 @@ describe('InvoicesListPage', () => {
       number: 1,
       status: 'Open',
       createdAtUtc: '2026-08-17T10:00:00Z',
+      closedAtUtc: null,
       items: [],
     },
     {
@@ -29,6 +30,7 @@ describe('InvoicesListPage', () => {
       number: 2,
       status: 'Closed',
       createdAtUtc: '2026-08-17T11:00:00Z',
+      closedAtUtc: '2026-08-17T11:05:00Z',
       items: [],
     },
   ];

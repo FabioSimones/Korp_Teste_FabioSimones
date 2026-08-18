@@ -64,9 +64,40 @@
   width: 100%;
 }
 
+.invoice-detail-page__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.invoice-detail-page__actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.invoice-detail-page__hint {
+  font-size: 0.85rem;
+  color: var(--mat-sys-on-surface-variant, rgba(0, 0, 0, 0.6));
+}
+
+.invoice-detail-page__print-error {
+  color: var(--mat-sys-error, #b3261e);
+  margin: 0 0 16px;
+}
+
 @media (max-width: 599px) {
   .invoice-detail-page__state {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+// Only the dedicated app-invoice-print-view (a sibling, outside this host)
+// should render when printing; hide the interactive screen content here.
+@media print {
+  .invoice-detail-page__no-print {
+    display: none;
   }
 }

@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -9,13 +9,17 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTableModule } from '@angular/material/table';
 import { finalize } from 'rxjs';
 
+import { NotificationService } from '../../../core/services/notification.service';
+import { InvoicePrintView } from '../invoice-print-view/invoice-print-view';
 import { InvoiceStatusBadge } from '../invoice-status-badge/invoice-status-badge';
 import { Invoice } from '../models/invoice';
 import { InvoicesService } from '../invoices.service';
 
 /**
  * Displays a single invoice: number, date, status badge and the item
- * snapshot (code/description/quantity) as returned by Billing.Api.
+ * snapshot (code/description/quantity) as returned by Billing.Api. Also
+ * hosts the print/close action (`POST /api/invoices/{id}/print`): closing
+ * an invoice is only possible from here.
  */
 @Component({
   selector: 'app-invoice-detail-page',
@@ -28,6 +32,7 @@ import { InvoicesService } from '../invoices.service';
     MatProgressSpinnerModule,
     MatTableModule,
     InvoiceStatusBadge,
+    InvoicePrintView,
   ],
   templateUrl: './invoice-detail-page.html',
   styleUrl: './invoice-detail-page.scss',
@@ -35,6 +40,7 @@ import { InvoicesService } from '../invoices.service';
 export class InvoiceDetailPage {
   private readonly route = inject(ActivatedRoute);
   private readonly invoicesService = inject(InvoicesService);
+  private readonly notification = inject(NotificationService);
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly displayedColumns = ['code', 'description', 'quantity'] as const;
@@ -42,6 +48,12 @@ export class InvoiceDetailPage {
   protected readonly invoice = signal<Invoice | null>(null);
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
+
+  protected readonly printing = signal(false);
+  protected readonly printError = signal<string | null>(null);
+
+  /** The print action is only available while the invoice is still `Open`. */
+  protected readonly canPrint = computed(() => this.invoice()?.status === 'Open');
 
   private readonly invoiceId = Number(this.route.snapshot.paramMap.get('id'));
 
@@ -51,6 +63,62 @@ export class InvoiceDetailPage {
 
   protected reload(): void {
     this.loadInvoice();
+  }
+
+  /**
+   * Triggers the print/close flow. Guarded by `printing()` and `canPrint()`
+   * so a duplicate click while the request is in flight (or on an already
+   * closed invoice) never fires a second call to the endpoint that debits
+   * stock.
+   */
+  protected print(): void {
+    if (this.printing() || !this.canPrint()) {
+      return;
+    }
+
+    this.printError.set(null);
+    this.printing.set(true);
+
+    this.invoicesService
+      .print(this.invoiceId)
+      .pipe(
+        finalize(() => this.printing.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (invoice) => this.handlePrintSuccess(invoice),
+        error: (error: HttpErrorResponse) => this.handlePrintError(error),
+      });
+  }
+
+  private handlePrintSuccess(invoice: Invoice): void {
+    this.invoice.set(invoice);
+    this.notification.success(`Nota Nº ${invoice.number} fechada com sucesso.`);
+    window.print();
+  }
+
+  private handlePrintError(error: HttpErrorResponse): void {
+    if (error.status === 404) {
+      this.printError.set('Nota não encontrada.');
+      return;
+    }
+
+    if (error.status === 409) {
+      this.printError.set(
+        error.error?.detail ??
+          'Não foi possível fechar a nota: ela já está fechada ou o saldo em estoque é insuficiente.',
+      );
+      return;
+    }
+
+    if (error.status === 0 || error.status === 503) {
+      this.printError.set(
+        'Serviço de estoque indisponível no momento. Tente novamente em instantes.',
+      );
+      return;
+    }
+
+    this.printError.set('Não foi possível imprimir a nota. Tente novamente.');
   }
 
   private loadInvoice(): void {

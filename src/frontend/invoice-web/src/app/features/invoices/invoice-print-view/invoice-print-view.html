@@ -1,0 +1,38 @@
+<section class="invoice-print-view">
+  <header class="invoice-print-view__header">
+    <h1>Nota Nº {{ invoice.number }}</h1>
+    <p>Status: {{ invoice.status === 'Closed' ? 'Fechada' : 'Aberta' }}</p>
+  </header>
+
+  <dl class="invoice-print-view__meta">
+    <div>
+      <dt>Emitida em</dt>
+      <dd>{{ invoice.createdAtUtc | date: 'dd/MM/yyyy HH:mm' }}</dd>
+    </div>
+    @if (invoice.closedAtUtc) {
+      <div>
+        <dt>Fechada em</dt>
+        <dd>{{ invoice.closedAtUtc | date: 'dd/MM/yyyy HH:mm' }}</dd>
+      </div>
+    }
+  </dl>
+
+  <table class="invoice-print-view__table">
+    <thead>
+      <tr>
+        <th>Código</th>
+        <th>Descrição</th>
+        <th>Quantidade</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (item of invoice.items; track item.id) {
+        <tr>
+          <td>{{ item.productCode }}</td>
+          <td>{{ item.productDescription }}</td>
+          <td>{{ item.quantity }}</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</section>
