@@ -12,12 +12,27 @@ namespace Inventory.Api.Features.Stock;
 /// <c>OperationId</c>, unique at the database level. Before debiting
 /// anything, the service checks whether an operation with that id already
 /// exists and, if so, replays the stored result instead of touching product
-/// balances again. Atomicity is guaranteed because all product balance
+/// balances again. A second, identical check is repeated immediately after
+/// the <c>SELECT ... FOR UPDATE</c> row locks are acquired (see
+/// <see cref="DebitAsync"/>): a request blocked on that lock while a
+/// concurrent request with the *same* <c>OperationId</c> commits would
+/// otherwise wake up, observe the already-updated balance, and could fail
+/// the normal insufficient-balance validation instead of replaying the
+/// winner's result - the first check alone does not cover that window.
+/// Atomicity is guaranteed because all product balance
 /// updates and the operation record are validated in memory first (missing
 /// products and insufficient balances are detected before any entity is
 /// mutated) and then persisted together in a single
 /// <see cref="DbContext.SaveChangesAsync"/> call wrapped in an explicit
 /// database transaction: either every change is committed or none is.
+/// Concurrency design: idempotency (above) only covers the *same*
+/// <c>OperationId</c> being repeated. Two requests with *different*
+/// <c>OperationId</c>s racing to debit the same product's balance are
+/// protected by locking the referenced product rows with
+/// <c>SELECT ... FOR UPDATE</c> (see <see cref="DebitAsync"/>), in
+/// deterministic <c>ProductId</c> order, before any balance is validated or
+/// mutated - this is a database-level lock, so it holds even across
+/// multiple Inventory.Api instances sharing the same PostgreSQL database.
 /// </remarks>
 public class StockDebitService : IStockDebitService
 {
@@ -40,14 +55,60 @@ public class StockDebitService : IStockDebitService
             return existing;
         }
 
-        var productIds = request.Items!.Select(i => i.ProductId).Distinct().ToList();
+        var productIds = request.Items!.Select(i => i.ProductId).Distinct().OrderBy(id => id).ToArray();
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
         // Tracked (not AsNoTracking) because balances are mutated below.
+        //
+        // SELECT ... FOR UPDATE locks the selected product rows at the
+        // PostgreSQL level (not in memory), for the remainder of this
+        // transaction. This is what protects against two concurrent
+        // requests with *different* OperationIds racing to debit the same
+        // product's balance: whichever transaction acquires the row lock
+        // first proceeds; the other blocks on the SELECT itself until the
+        // first transaction commits or rolls back, then observes the
+        // already-updated balance and is validated against it (see
+        // Product.Debit below). The lock lives entirely in the database, so
+        // it works correctly across multiple Inventory.Api instances/
+        // processes sharing the same PostgreSQL database - there is no
+        // in-memory/application-level lock involved.
+        //
+        // Rows are locked in a deterministic order (ORDER BY "Id") to avoid
+        // deadlocks: two concurrent debits referencing the same set of
+        // products in different list orders would otherwise be able to
+        // each hold one row's lock while waiting for the other's, causing
+        // a deadlock. Sorting productIds before the query guarantees every
+        // transaction acquires locks in the same ascending order.
+        //
+        // Ids are passed as a parameterized array (FromSqlInterpolated),
+        // never concatenated into the SQL string.
         var products = await _dbContext.Products
-            .Where(p => productIds.Contains(p.Id))
+            .FromSqlInterpolated(
+                $"SELECT * FROM products WHERE \"Id\" = ANY({productIds}) ORDER BY \"Id\" FOR UPDATE")
             .ToDictionaryAsync(p => p.Id, cancellationToken);
+
+        // Second idempotency check, right after acquiring the row locks and
+        // before any validation/mutation. The first check (above, before
+        // the transaction) does not cover the window where this request was
+        // blocked *inside* the SELECT ... FOR UPDATE waiting for a
+        // concurrent request with the same OperationId to commit: once
+        // unblocked, this transaction would otherwise re-read the
+        // already-updated balance and run the normal validation against it
+        // (Product.Debit), which can throw InsufficientProductBalanceException
+        // for what is, in fact, the very same logical request - a false
+        // 409 for what should be an idempotent 200 replay of the winner's
+        // result. Detecting the now-committed operation here, before any
+        // validation, avoids that entirely.
+        var winnerAfterLock = await FindExistingOperationAsync(request.OperationId, cancellationToken);
+        if (winnerAfterLock is not null)
+        {
+            // Nothing has been mutated yet in this transaction, so no
+            // explicit rollback is strictly required, but it is done here
+            // for clarity: this attempt must not persist or mutate anything.
+            await transaction.RollbackAsync(cancellationToken);
+            return winnerAfterLock;
+        }
 
         var missingId = productIds.FirstOrDefault(id => !products.ContainsKey(id));
         if (missingId != 0)
