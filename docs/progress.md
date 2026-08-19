@@ -19,4 +19,4 @@ Os commits correspondentes a cada task devem ser consultados com `git log --onel
 | 10 | Impressão no frontend | Concluída |
 | 11 | Resiliência e falha obrigatória | Concluída |
 | 12 | Concorrência opcional | Concluída |
-| 13 | Qualidade, documentação e entrega | Pendente |
+| 13 | Qualidade, documentação e entrega | Concluída |

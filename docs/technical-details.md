@@ -47,19 +47,24 @@ As credenciais de desenvolvimento serão fornecidas via variáveis de ambiente n
 
 ## Comandos oficiais de build e teste
 
+Comandos finais confirmados na Task 13, executados a partir da raiz do repositório (backend) e de
+`src/frontend/invoice-web` (frontend); ver `README.md` para o roteiro completo de execução do
+zero, incluindo bancos e migrations.
+
 ### Backend
 
 ```bash
-dotnet build src/backend/Korp.sln
-dotnet test src/backend/Korp.sln
+dotnet format src/backend/Korp.sln --verify-no-changes
+dotnet build src/backend/Korp.sln --configuration Release
+dotnet test src/backend/Korp.sln --configuration Release
 ```
 
 ### Frontend
 
 ```bash
 npm ci
-npm run lint
 npm run format:check
+npm run lint
 npm test
 npm run build
 ```
@@ -79,7 +84,19 @@ Comandos confirmados na Task 03 (idênticos aos scripts reais de `src/frontend/i
 
 ## Arquitetura dos microsserviços
 
-A preencher nas tasks de implementação.
+Visão geral em `README.md` (seção "Arquitetura") e `docs/architecture.md`; esta seção registra
+apenas os fatos que não estão documentados em nenhum dos dois.
+
+- `Inventory.Api` e `Billing.Api` são dois processos ASP.NET Core independentes (`dotnet run`
+  separado por serviço), cada um com seu próprio `Program.cs`, `DbContext`, `appsettings.json` e
+  `UserSecretsId` — não há projeto/assembly compartilhado entre eles além de não existir nenhum.
+- Organização interna por funcionalidade em cada serviço (`Features/Products`, `Features/Stock` no
+  Inventory; `Features/Invoices` no Billing), não por camada técnica (não há pastas genéricas
+  `Controllers/`, `Services/`, `Repositories/` na raiz do projeto).
+- `Billing.Api` depende de `Inventory.Api` em tempo de execução (via HTTP, para consultar produto e
+  solicitar baixa), mas não o contrário — `Inventory.Api` não conhece `Billing.Api`.
+- Nenhum repositório genérico sobre EF Core foi criado; cada serviço acessa seu `DbContext`
+  diretamente dentro da camada de serviço da própria feature.
 
 ## CORS (Inventory.Api e Billing.Api)
 
@@ -482,4 +499,52 @@ Cobertura:
 - O tratamento de corrida para requisições com o **mesmo** `OperationId` chegando simultaneamente (violação do índice único capturada como `DbUpdateException`) existe no código desde a Task 08 e passou a ser exercitado por um teste automatizado com requisições paralelas reais na Task 12 (`Concurrent_Requests_With_Same_OperationId_Still_Debit_Only_Once`, em `StockConcurrencyApiTests.cs`). Esse primeiro teste usa saldo inicial 5 e quantidade 2, cenário em que o saldo permanece suficiente mesmo após a primeira baixa; ele não exercitava a janela em que o saldo remanescente já não é mais suficiente para a "perdedora" da corrida pelo lock de linha. Correção pós-Task 12 (antes do checkpoint): adicionada uma segunda checagem de idempotência logo após o `SELECT ... FOR UPDATE` em `StockDebitService.DebitAsync`, e dois novos testes (`Concurrent_Requests_With_Same_OperationId_Against_Exact_Balance_Both_Return_Success`, `Concurrent_Requests_With_Same_OperationId_But_Different_Payloads_Only_Debit_Once`) — ver "Segunda checagem de idempotência, após o lock".
 - Impressões concorrentes (Task 09) sobre a **mesma nota** (duas requisições `POST /print` simultâneas) não têm proteção dedicada nem teste automatizado — apenas a sequência de tentativas/retentativas para a mesma nota via `OperationId` idempotente está coberta. Fica reservado para a task futura de concorrência; ver "Impressão e fechamento de notas (Billing.Api, Task 09)".
 - Task 11 (resiliência): não cobre concorrência entre impressões simultâneas para a mesma nota (mesma limitação acima); o circuit breaker mantém estado apenas em memória por processo/instância do Billing.Api (via `Polly.Registry.ResiliencePipelineRegistry`), sem coordenação entre múltiplas réplicas — aceitável no escopo local deste desafio; os testes automatizados de retry/timeout/circuit breaker usam valores reduzidos (`ResilientInventoryClientFactory.FastTestOptions`), diferentes dos valores de produção em `appsettings.json`, para manter a suíte rápida — a configuração de produção é validada apenas por inspeção e pelo roteiro manual.
+
+## Build de produção do frontend — orçamento de bundle (Task 13)
+
+`npm run build` (`ng build`) conclui com **sucesso** (`Application bundle generation complete`),
+mas emite um `WARNING` de orçamento de bundle:
+
+```text
+▲ [WARNING] bundle initial exceeded maximum budget. Budget 500.00 kB was not met by 87.07 kB with a total of 587.07 kB.
+```
+
+- Tamanho observado do bundle inicial: **587.07 kB** (raw), **142.31 kB** estimados após
+  transferência (gzip).
+- Orçamentos configurados em `angular.json` (`budgets` da configuração `production`):
+  `maximumWarning` de **500 kB** e `maximumError` de **1 MB**, ambos para o bundle inicial. O build
+  só falharia (erro, não warning) acima de 1 MB — não é o caso aqui.
+- Causa principal do crescimento: **Angular Material** (componentes de toolbar, sidenav, tabelas,
+  formulários, snackbar, ícones e o sistema de tema) mais `@angular/cdk` e `@angular/animations`
+  (dependências peer do Material), que respondem pela maior parte do bundle inicial em relação a um
+  projeto Angular sem biblioteca de componentes.
+- Nenhuma alteração de `angular.json`/orçamento foi feita nesta task — o warning é mantido visível
+  deliberadamente (não faz parte do escopo da Task 13 ocultá-lo aumentando o orçamento).
+- Otimização futura possível (fora do escopo desta entrega): lazy-loading mais granular dos módulos
+  do Angular Material por feature, importação seletiva de componentes específicos em vez do módulo
+  amplo, ou revisão de quais componentes do Material são realmente necessários no bundle inicial
+  (`main`) versus nos chunks lazy já existentes por rota (`invoice-form-page`, `invoice-detail-page`,
+  `products-page`, `invoices-list-page`).
+
+## Entrega e documentação (Task 13)
+
+- Roteiro completo de execução do zero (pré-requisitos, `.env`, Docker Compose, User Secrets,
+  migrations, execução das APIs e do Angular, URLs locais, solução de problemas e limitações
+  conhecidas): `README.md` na raiz do repositório. Este documento (`technical-details.md`)
+  complementa o README com o detalhamento técnico por task; evita-se duplicar aqui o que já está
+  no README.
+- Roteiro de demonstração (vídeo/apresentação, 10–15 minutos, passo a passo com ferramenta, ação,
+  resultado esperado, evidência e plano de recuperação): `docs/demo-script.md`.
+- Migrations atuais aplicadas nos bancos locais (confirmadas via `dotnet ef migrations list` nesta
+  task): `Inventory.Api` — `InitialCreate`, `AddProducts`, `AddStockDebits`; `Billing.Api` —
+  `InitialCreate`, `AddInvoices`, `AddInvoicePrintFields`. Ambas as listas batem exatamente com os
+  arquivos em `src/backend/*/Data/Migrations`.
+- Testes atuais confirmados nesta task: backend `116/116` (`55` `Inventory.Tests` + `61`
+  `Billing.Tests`), frontend `58/58` (Vitest). Esses números não representam cobertura de 100% do
+  código — ver "Testes" acima para o que é efetivamente exercitado.
+- Limitações conhecidas mantidas sem alteração de código nesta task: impressão concorrente da
+  mesma nota sem proteção dedicada; circuit breaker em memória por processo; contenção serializada
+  no mesmo produto sob concorrência (comportamento esperado, não defeito); ausência de autenticação
+  (fora do escopo do desafio). Detalhamento de cada uma nas seções correspondentes acima e no
+  README (seção "Limitações conhecidas").
 
