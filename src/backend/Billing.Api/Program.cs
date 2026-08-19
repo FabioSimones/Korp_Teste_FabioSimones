@@ -42,28 +42,45 @@ builder.Services.AddHealthChecks();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 
 // Cliente HTTP resiliente entre Faturamento e Estoque (docs/architecture.md):
-// usado apenas para validar produtos e capturar o snapshot de código/descrição
-// ao criar uma nota. Timeout curto para não bloquear a requisição indefinidamente
-// quando o Inventory.Api estiver indisponível (mapeado para 503 pelo controller).
-// Retry/circuit breaker avançados ficam para a Task 11 (Resiliência).
+// usado para validar produtos/capturar o snapshot de código-descrição ao
+// criar uma nota, e para solicitar a baixa atômica de estoque ao imprimir.
+// A resiliência (timeout total/por tentativa, retry com backoff exponencial
+// e jitter, circuit breaker) é aplicada de forma idêntica aos dois clientes
+// por InventoryResiliencePipeline.AddInventoryResilience (Task 11); valores
+// externalizados na seção "InventoryApi:Resilience" (ver appsettings.json e
+// docs/technical-details.md).
 var inventoryApiBaseUrl = builder.Configuration["InventoryApi:BaseUrl"]
     ?? throw new InvalidOperationException("Configuration 'InventoryApi:BaseUrl' not set.");
+
+var inventoryResilienceOptions = builder.Configuration
+    .GetSection("InventoryApi:Resilience")
+    .Get<InventoryResilienceOptions>() ?? new InventoryResilienceOptions();
+
+// HttpClient.Timeout is a coarse safety net, deliberately set well above the
+// resilience pipeline's own total timeout below: the pipeline (Polly, via
+// AddInventoryResilience) is the real, fine-grained timeout mechanism
+// (per-attempt + total), and this larger backstop only guards against the
+// pipeline itself somehow failing to enforce its timeout, without ever
+// racing/conflicting with it. See docs/technical-details.md.
+var httpClientSafetyTimeout = TimeSpan.FromSeconds(
+    inventoryResilienceOptions.TotalTimeoutSeconds + inventoryResilienceOptions.SafetyTimeoutMarginSeconds);
 
 builder.Services.AddHttpClient<IInventoryProductClient, InventoryProductClient>(client =>
 {
     client.BaseAddress = new Uri(inventoryApiBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(5);
-});
+    client.Timeout = httpClientSafetyTimeout;
+}).AddInventoryResilience(inventoryResilienceOptions);
 
 // Dedicated client for the atomic stock debit call used by the print/close
-// flow (docs/architecture.md "Fluxo de impressão"). Same target service and
-// timeout policy as the product lookup client above, kept separate because
-// it has a distinct responsibility (write-off vs. read-only lookup).
+// flow (docs/architecture.md "Fluxo de impressão"). Same target service,
+// timeout backstop, and resilience pipeline as the product lookup client
+// above, kept separate because it has a distinct responsibility (write-off
+// vs. read-only lookup).
 builder.Services.AddHttpClient<IInventoryStockClient, InventoryStockClient>(client =>
 {
     client.BaseAddress = new Uri(inventoryApiBaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(5);
-});
+    client.Timeout = httpClientSafetyTimeout;
+}).AddInventoryResilience(inventoryResilienceOptions);
 
 // CORS: origem permitida configurável via "Cors:AllowedOrigins" (appsettings ou
 // variável de ambiente Cors__AllowedOrigins__0), sem AllowAnyOrigin/AllowCredentials.

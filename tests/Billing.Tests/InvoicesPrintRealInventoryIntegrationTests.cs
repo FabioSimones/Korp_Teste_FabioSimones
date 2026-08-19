@@ -272,6 +272,121 @@ public class InvoicesPrintRealInventoryIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Print_When_First_Attempt_Response_Is_Lost_At_Transport_Level_Automatic_Retry_Reuses_OperationId_And_Debits_Once()
+    {
+        // Arrange: a real product with real balance in the real Inventory.Api/Postgres.
+        var product = await CreateProductAsync("SKU-PRINT-7", 10);
+
+        // Unlike Print_When_Stock_Was_Debited_But_Response_Was_Lost_Retry_Closes_Without_Second_Debit
+        // below (which simulates the crash/retry sequence by making the test
+        // itself call print twice), this test drives the retry entirely
+        // through the real Billing->Inventory resilience pipeline (Task 11):
+        // a single POST /print from the caller. The transport-level wrapper
+        // below lets the first physical HTTP attempt genuinely reach the
+        // real, in-process Inventory.Api and apply the debit, then discards
+        // that successful response and throws a transient
+        // HttpRequestException instead, simulating a dropped
+        // connection/lost response *underneath* the pipeline. Polly's own
+        // retry stage catches that transient failure and re-sends the exact
+        // same request (same OperationId, computed and persisted once by
+        // InvoiceService before DebitAsync is ever called) to Inventory,
+        // which recognizes the repeat via its own OperationId idempotency
+        // and replays the original result instead of debiting again.
+        var responseLostOnce = new ResponseLostOnceHandler(_inventoryFactory.Server.CreateHandler());
+        var resilienceOptions = ResilientInventoryClientFactory.FastTestOptions(retryMaxAttempts: 2);
+        var (stockClient, stockClientProvider) = ResilientInventoryClientFactory.CreateStockClient(resilienceOptions, responseLostOnce);
+        await using var stockClientProviderDisposable = stockClientProvider;
+
+        await using var billingFactory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("ConnectionStrings:BillingDb", _billingDbContainer.GetConnectionString());
+            builder.UseSetting("InventoryApi:BaseUrl", "http://inventory.local");
+
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddHttpClient<IInventoryProductClient, InventoryProductClient>(client =>
+                {
+                    client.BaseAddress = new Uri("http://inventory.local");
+                    client.Timeout = TimeSpan.FromSeconds(5);
+                }).ConfigurePrimaryHttpMessageHandler(() => _inventoryFactory.Server.CreateHandler());
+
+                services.RemoveAll<IInventoryStockClient>();
+                services.AddSingleton(stockClient);
+            });
+        });
+
+        using (var scope = billingFactory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BillingDbContext>();
+            await db.Database.MigrateAsync();
+        }
+
+        using var client = billingFactory.CreateClient();
+
+        using var invoiceResponse = await client.PostAsJsonAsync(
+            "/api/invoices", new CreateInvoiceRequest([new CreateInvoiceItemRequest(product.Id, 4)]));
+        var invoice = (await invoiceResponse.Content.ReadFromJsonAsync<InvoiceResponse>())!;
+
+        // Act: a single print request; the retry happens transparently
+        // inside the resilience pipeline, invisible to the caller.
+        using var printResponse = await client.PostAsync($"/api/invoices/{invoice.Id}/print", null);
+
+        // Assert: the caller sees a single successful response; the invoice is closed.
+        Assert.Equal(HttpStatusCode.OK, printResponse.StatusCode);
+        var printed = await printResponse.Content.ReadFromJsonAsync<InvoiceResponse>();
+        Assert.Equal("Closed", printed!.Status);
+        Assert.NotNull(printed.ClosedAtUtc);
+
+        // Assert: the balance was debited exactly once (not twice).
+        Assert.Equal(6, await GetBalanceAsync(product.Id));
+
+        // Assert: the OperationId persisted for the invoice was reused by
+        // the automatic retry, and Inventory recorded exactly one operation
+        // for it.
+        var operationId = await GetPersistedOperationIdAsync(billingFactory, invoice.Id);
+        Assert.NotNull(operationId);
+        Assert.Equal(1, await CountStockDebitOperationsAsync(operationId!.Value));
+
+        // Assert: the transport-level wrapper genuinely saw two physical
+        // HTTP attempts underneath the pipeline (the lost one and the retry).
+        Assert.Equal(2, responseLostOnce.AttemptCount);
+    }
+
+    /// <summary>
+    /// Wraps the real, in-process Inventory.Api handler to simulate a
+    /// transport-level failure (dropped connection) immediately after a
+    /// successful response, so that the resilience pipeline sitting above it
+    /// (not the test) is the one driving the retry.
+    /// </summary>
+    private sealed class ResponseLostOnceHandler : DelegatingHandler
+    {
+        private bool _hasSimulatedLoss;
+
+        public ResponseLostOnceHandler(HttpMessageHandler inner)
+            : base(inner)
+        {
+        }
+
+        public int AttemptCount { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            AttemptCount++;
+            var response = await base.SendAsync(request, cancellationToken);
+
+            if (!_hasSimulatedLoss && response.IsSuccessStatusCode)
+            {
+                _hasSimulatedLoss = true;
+                response.Dispose();
+                throw new HttpRequestException(
+                    "Simulated: the debit succeeded on Inventory but the response was lost at the transport layer.");
+            }
+
+            return response;
+        }
+    }
+
+    [Fact]
     public async Task Print_When_Stock_Was_Debited_But_Response_Was_Lost_Retry_Closes_Without_Second_Debit()
     {
         // Arrange: a dedicated Billing factory whose IInventoryStockClient is

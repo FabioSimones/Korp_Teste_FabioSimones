@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 namespace Billing.Api.Features.Invoices;
 
@@ -57,9 +59,25 @@ public class InventoryStockClient : IInventoryStockClient
         {
             throw new InventoryServiceUnavailableException("The Inventory service is unavailable.", ex);
         }
+        catch (TimeoutRejectedException ex)
+        {
+            // The resilience pipeline's total or per-attempt timeout tripped
+            // (Task 11), distinct from the caller cancelling the request.
+            // The invoice stays Open: InvoiceService only closes it after
+            // DebitAsync returns successfully.
+            throw new InventoryServiceUnavailableException("The Inventory service request timed out.", ex);
+        }
+        catch (BrokenCircuitException ex)
+        {
+            // The circuit breaker is open and short-circuited the call
+            // before reaching Inventory.Api (Task 11).
+            throw new InventoryServiceUnavailableException("The Inventory service circuit breaker is open.", ex);
+        }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            // HttpClient.Timeout elapsed (distinct from the caller cancelling the request).
+            // HttpClient.Timeout safety-net elapsed; should not normally
+            // trigger since it sits well above the pipeline's own total
+            // timeout (see Program.cs).
             throw new InventoryServiceUnavailableException("The Inventory service request timed out.", ex);
         }
 

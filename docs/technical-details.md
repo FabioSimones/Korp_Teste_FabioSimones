@@ -300,6 +300,110 @@ Fluxo visual sobre o endpoint `POST /api/invoices/{id}/print` (ver "Impressão e
 - **Componente imprimível (`InvoicePrintView`, `invoice-print-view.ts/.html/.scss`)**: `standalone`, recebe a nota via `@Input({ required: true })`, renderizado como irmão do `<section>` principal em `invoice-detail-page.html` (fora do bloco marcado `invoice-detail-page__no-print`). Fica com `:host { display: none; }` na tela normal e só aparece dentro de `@media print { :host { display: block; } }`, mostrando número, status, datas e a tabela de itens em HTML/CSS simples (sem Angular Material) para impressão limpa. `invoice-detail-page.scss` complementa isso escondendo o conteúdo interativo (`.invoice-detail-page__no-print`) dentro de `@media print`, e uma regra global em `src/styles.scss` (`@media print { .shell__sidenav, .shell__toolbar { display: none !important; } }`) esconde a navegação/toolbar do shell da aplicação, garantindo que `window.print()` produza apenas o conteúdo da nota.
 - **Testes**: `invoice-detail-page.spec.ts` cobre botão habilitado/desabilitado por status, spinner + botão desabilitado durante a chamada, chamada única do serviço mesmo com múltiplos cliques em sequência antes do próximo `detectChanges()`, sucesso (atualização do badge, notificação, `window.print()` chamado exatamente uma vez), mensagens para 404/409/503 na impressão, e reabilitação do botão após falha. `invoice-print-view.spec.ts` cobre a renderização isolada do componente (número, status, datas, itens). `invoices.service.spec.ts` cobre `print(id)` (`POST` correto, resposta tipada).
 
+## Resiliência Billing → Inventory (Task 11)
+
+Pacote adicionado ao `Billing.Api.csproj`: **`Microsoft.Extensions.Http.Resilience` 10.9.0** (oficial Microsoft, baseado em `Polly.Core` 8.4.2, trazido como dependência transitiva). Não foi adicionado `Polly.Extensions.Http` (legado) nem qualquer outro pacote de resiliência.
+
+A mesma pipeline (`Billing.Api/Features/Invoices/InventoryResilience.cs`, método de extensão `AddInventoryResilience(this IHttpClientBuilder, InventoryResilienceOptions)`) é aplicada, de forma idêntica, aos dois `HttpClient`s tipados registrados em `Program.cs`: `IInventoryProductClient`/`InventoryProductClient` (consulta de produto) e `IInventoryStockClient`/`InventoryStockClient` (baixa de estoque na impressão).
+
+### Ordem dos estágios (de fora para dentro)
+
+1. **Timeout total** (`inventory-api-total-timeout`) — cobre a chamada inteira, incluindo todas as tentativas de retry.
+2. **Retry** (`inventory-api-retry`, `HttpRetryStrategyOptions`) — backoff exponencial com jitter, número limitado de tentativas.
+3. **Circuit breaker** (`inventory-api-circuit-breaker`, `HttpCircuitBreakerStrategyOptions`) — fica *dentro* do retry (uma tentativa contra o circuito aberto ainda conta como uma tentativa esgotada para quem retry) e *fora* do timeout por tentativa (observa o resultado de cada tentativa individual).
+4. **Timeout por tentativa** (`inventory-api-attempt-timeout`) — mais interno, limita uma única chamada HTTP.
+
+Essa ordem replica o layout usado internamente por `AddStandardResilienceHandler()` do próprio pacote (que foi avaliado e descartado como está, pois seus valores-padrão não são externalizáveis por seção de configuração própria do jeito exigido pela task; a pipeline foi montada explicitamente via `AddResilienceHandler` para poder externalizar cada valor).
+
+### Timeout: por tentativa vs. total vs. `HttpClient.Timeout` (decisão)
+
+A fonte de verdade para timeout é a **pipeline de resiliência** (Polly), não `HttpClient.Timeout`. `HttpClient.Timeout` é mantido apenas como uma rede de segurança grosseira, deliberadamente configurado bem acima do timeout total da pipeline (`TotalTimeoutSeconds + SafetyTimeoutMarginSeconds`, calculado em `Program.cs`), para nunca competir com o timeout real. Essa decisão está comentada tanto em `Program.cs` quanto em `InventoryResilienceOptions` (`InventoryResilience.cs`).
+
+### Configuração externalizada
+
+Seção `InventoryApi:Resilience` em `appsettings.json` (mesmos valores usados em desenvolvimento e produção, sem segredo envolvido — não há necessidade de uma seção diferente em `appsettings.Development.json`):
+
+| Chave | Valor padrão | Finalidade |
+| --- | ---: | --- |
+| `AttemptTimeoutSeconds` | 3 | Timeout por tentativa individual (estágio mais interno) |
+| `TotalTimeoutSeconds` | 12 | Timeout da chamada inteira, incluindo retries (estágio mais externo) |
+| `SafetyTimeoutMarginSeconds` | 5 | Margem somada a `TotalTimeoutSeconds` para compor `HttpClient.Timeout` (rede de segurança, nunca a fonte de verdade) |
+| `RetryMaxAttempts` | 3 | Número de tentativas de retry após a primeira |
+| `RetryBaseDelaySeconds` | 0.5 | Atraso-base do backoff exponencial com jitter entre tentativas |
+| `CircuitBreakerFailureRatio` | 0.5 | Fração de falhas, dentro da janela de amostragem, que abre o circuito |
+| `CircuitBreakerSamplingDurationSeconds` | 10 | Janela de amostragem usada para calcular a taxa de falhas |
+| `CircuitBreakerMinimumThroughput` | 4 | Número mínimo de chamadas, dentro da janela, antes que o circuito possa abrir |
+| `CircuitBreakerBreakDurationSeconds` | 15 | Tempo que o circuito fica aberto antes de permitir uma chamada de sondagem (half-open) |
+
+`InventoryResilienceOptions` (`Billing.Api/Features/Invoices/InventoryResilience.cs`) é o tipo fortemente tipado vinculado a essa seção via `builder.Configuration.GetSection("InventoryApi:Resilience").Get<InventoryResilienceOptions>()`; se a seção estiver ausente, os valores-padrão da classe (idênticos aos de `appsettings.json`) são usados.
+
+### Classificação de falha transitória (retry e circuit breaker usam o mesmo critério)
+
+Implementada em `InventoryResiliencePipeline.IsTransientFailure` e reaplicada tanto no `ShouldHandle` do retry quanto no do circuit breaker:
+
+**Recebem retry / contam para o circuit breaker:**
+- `HttpRequestException` (falha de conexão).
+- `Polly.Timeout.TimeoutRejectedException` (timeout por tentativa ou total da própria pipeline).
+- HTTP 408 (Request Timeout).
+- HTTP 429 (Too Many Requests) — `HttpRetryStrategyOptions.ShouldRetryAfterHeader = true` respeita nativamente o cabeçalho `Retry-After` quando presente na resposta.
+- HTTP 5xx.
+
+**Nunca recebem retry:**
+- HTTP 400, 404, 409 — respostas de negócio legítimas do Inventory (produto inválido, produto/nota inexistente, saldo insuficiente, nota já fechada).
+- Cancelamento solicitado pelo próprio chamador da Billing.Api (`OperationCanceledException`/`TaskCanceledException` com `cancellationToken.IsCancellationRequested == true`) — nunca corresponde ao predicado acima, então propaga sem retry e sem ser traduzido em `InventoryServiceUnavailableException`.
+
+### Reutilização do `OperationId`
+
+Nenhuma mudança foi necessária em `InvoiceService.PrintAsync` (Task 09): o `OperationId` já é computado e persistido (`SaveChangesAsync`) **antes** da chamada a `IInventoryStockClient.DebitAsync`, uma única vez por nota. Como os retries do Polly acontecem *dentro* de uma única chamada a `DebitAsync` (no nível do `DelegatingHandler` da pipeline, abaixo de `InvoiceService`), cada tentativa reenvia o mesmo corpo de requisição (mesmo `OperationId`, mesmos itens) — nunca um novo `Guid` é gerado entre tentativas. A idempotência por `OperationId` do Inventory.Api (Task 08) absorve qualquer repetição.
+
+### Tradução de exceções para o contrato público (503/ProblemDetails/traceId)
+
+`InventoryProductClient`/`InventoryStockClient` (`Features/Invoices/`) capturam, além de `HttpRequestException` e `TaskCanceledException` (rede de segurança do `HttpClient.Timeout`, que não deveria normalmente disparar):
+- `Polly.Timeout.TimeoutRejectedException` → `InventoryServiceUnavailableException("... timed out.")`.
+- `Polly.CircuitBreaker.BrokenCircuitException` → `InventoryServiceUnavailableException("... circuit breaker is open.")`.
+
+Nenhum tipo do Polly (nem stack trace) vaza para o consumidor HTTP: `InvoicesController` continua mapeando apenas `InventoryServiceUnavailableException` para 503 com `ProblemDetails` + `traceId` (`HttpContext.TraceIdentifier`), exatamente como na Task 09. Timeout, circuito aberto e esgotamento de tentativas convergem todos para o mesmo 503; a nota permanece `Open` em qualquer um desses caminhos, pois `Invoice.Close` só é chamado após `DebitAsync` retornar com sucesso.
+
+### Logs estruturados
+
+Via `ILogger` (categoria `"Billing.Api.Resilience.InventoryApi"`, resolvido a partir do `IServiceProvider` do próprio `ResilienceHandlerContext`, sem acoplar a pipeline a um logger estático):
+- `OnRetry` (retry): `LogWarning` com o caminho da requisição, o número da tentativa e uma descrição curta do motivo (nome do tipo de exceção ou `"HTTP {status}"`).
+- `OnOpened` (circuito abre): `LogError` com a duração do período aberto e o motivo.
+- `OnClosed` (circuito fecha): `LogInformation`.
+- `OnHalfOpened` (sondagem): `LogInformation`.
+
+Nenhum log inclui senha, connection string ou payload de requisição/resposta — apenas caminho, contagem de tentativa e status HTTP/nome da exceção. `OperationId` não é logado explicitamente pela pipeline de resiliência (que não tem acesso direto ao corpo da requisição desserializado), mas já é rastreável nos logs de aplicação existentes através do fluxo normal do `InvoiceService`.
+
+### Tracing/correlação
+
+Nenhum header proprietário foi adicionado. A propagação de correlação entre Billing.Api e Inventory.Api continua inteiramente a cargo do mecanismo padrão do `HttpClientFactory`/`Activity` do .NET (headers de trace distribuído propagados automaticamente quando aplicável), sem qualquer código adicional nesta task.
+
+### Testes (`tests/Billing.Tests`)
+
+Infraestrutura de teste compartilhada em `ResilienceTestSupport.cs`:
+- `ScriptedHttpMessageHandler`: `HttpMessageHandler` primário script-ável (delegate por tentativa), usado como substituto de um socket real para testar retry/timeout/circuit breaker de forma determinística e rápida.
+- `CapturingLoggerProvider`: captura mensagens de log formatadas para comprovar que os eventos de abertura/fechamento do circuito realmente emitem logs.
+- `ResilientInventoryClientFactory`: monta um `InventoryStockClient`/`InventoryProductClient` de produção, com a pipeline real (`AddInventoryResilience`), sobre um `ServiceCollection` independente (sem `WebApplicationFactory`), permitindo testes rápidos e isolados dos clientes com a pipeline real ligada a um handler controlado. Inclui `FastTestOptions`, com timeouts/backoff/circuito reduzidos para testes (evitando `Thread.Sleep`/esperas longas).
+
+Cobertura:
+- `InventoryResilienceClientTests.cs` (7 testes, sem containers/rede real):
+  - `DebitAsync_Recovers_After_A_Transient_Failure_Then_Succeeds_With_Exact_Retry_Count`: 1ª tentativa 503, 2ª sucesso → resultado correto e exatamente 2 tentativas HTTP.
+  - `DebitAsync_Exhausts_Retries_And_Surfaces_ServiceUnavailable_With_Exact_Attempt_Count`: sempre 503 → `InventoryServiceUnavailableException`, exatamente 3 tentativas (1 inicial + 2 retries).
+  - `DebitAsync_When_Every_Attempt_Exceeds_The_Per_Attempt_Timeout_Surfaces_ServiceUnavailable`: handler sempre atrasa além do timeout por tentativa → `InventoryServiceUnavailableException` (mensagem menciona "timed out"), exatamente 3 tentativas.
+  - `DebitAsync_On_NotFound_Does_Not_Retry_And_Maps_To_ProductNotFound` / `DebitAsync_On_Conflict_Does_Not_Retry_And_Maps_To_InsufficientBalance`: 404/409 → exceção de domínio correta, exatamente 1 tentativa HTTP mesmo com retries configurados.
+  - `DebitAsync_When_Caller_Cancels_Propagates_Cancellation_Without_Retrying`: token já cancelado pelo chamador → `OperationCanceledException` propaga sem tradução, 0 tentativas HTTP.
+  - `Circuit_Breaker_Opens_After_Threshold_Then_Half_Opens_And_Closes_On_Success`: uma chamada com falha em ambas as tentativas (inicial + 1 retry) atinge o `MinimumThroughput` (2) e abre o circuito; a chamada seguinte falha rápido sem tocar o handler (contagem de tentativas não cresce); após aguardar o `BreakDuration`, a chamada de sondagem (half-open) com sucesso fecha o circuito novamente; uma chamada adicional confirma o fechamento; logs capturados comprovam as mensagens de abertura e fechamento.
+- `InvoicesPrintResilienceApiTests.cs` (2 testes, `WebApplicationFactory<Program>` + Postgres real via Testcontainers para o `billing_db`, `IInventoryStockClient` real com a pipeline real sobre um `ScriptedHttpMessageHandler`):
+  - `Print_When_Retries_Are_Exhausted_Returns_ServiceUnavailable_With_TraceId_And_Keeps_Invoice_Open`: 503 em toda tentativa → `POST /print` retorna 503 com `ProblemDetails` contendo `traceId` não vazio; exatamente 3 tentativas HTTP; a nota permanece `Open` (`ClosedAtUtc` nulo).
+  - `Print_When_Every_Attempt_Times_Out_Returns_ServiceUnavailable_And_Keeps_Invoice_Open`: mesmo cenário, mas via timeout por tentativa em vez de status 503; mesmas asserções (503, `traceId`, 3 tentativas, nota `Open`).
+- `InvoicesPrintRealInventoryIntegrationTests.cs`, novo teste `Print_When_First_Attempt_Response_Is_Lost_At_Transport_Level_Automatic_Retry_Reuses_OperationId_And_Debits_Once`: cenário crítico com infraestrutura real (dois containers Testcontainers, Inventory.Api real hospedado em processo). Diferente do teste equivalente da Task 09 (`Print_When_Stock_Was_Debited_But_Response_Was_Lost_Retry_Closes_Without_Second_Debit`, que simula a retentativa chamando `POST /print` duas vezes a partir do teste), este teste dispara **uma única** chamada `POST /print`; a retentativa acontece inteiramente dentro da pipeline real de resiliência via um `DelegatingHandler` de teste (`ResponseLostOnceHandler`) que envolve o handler real do `TestServer` do Inventory: a primeira tentativa física chega de verdade ao Inventory real (a baixa é genuinamente aplicada, saldo reduzido no Postgres real), mas a resposta bem-sucedida é descartada e uma `HttpRequestException` transitória é lançada no lugar, simulando uma conexão perdida abaixo da pipeline; o estágio de retry do Polly captura essa falha e reenvia a mesma requisição (mesmo `OperationId`), que desta vez é encaminhada normalmente e observa a resposta de sucesso. Asserções: resposta única do chamador é 200 com a nota `Closed`; saldo debitado uma única vez (comprovado consultando o Inventory real); `OperationId` persistido no banco do Billing consultado diretamente; exatamente uma `StockDebitOperation` no banco do Inventory para aquele `OperationId` (consulta direta ao `InventoryDbContext`, mesmo padrão da Task 09); o wrapper de transporte comprova que houve exatamente 2 tentativas físicas de HTTP (a perdida e a retentativa).
+
+### Limitações conhecidas (Task 11)
+
+- Não cobre concorrência entre impressões simultâneas para a mesma nota (duas requisições `POST /print` disparadas ao mesmo tempo) — reservado para a Task 12, já documentado em "Limitação de concorrência (fora do escopo desta task)" na seção da Task 09.
+- O circuit breaker é por instância de `HttpClient`/pipeline dentro do processo Billing.Api (estado em memória, via `Polly.Registry.ResiliencePipelineRegistry`); não há estado de circuito compartilhado entre múltiplas instâncias/réplicas do serviço, o que é aceitável no escopo local de desenvolvimento deste desafio.
+- Os testes de circuit breaker/retry/timeout usam valores reduzidos (`ResilientInventoryClientFactory.FastTestOptions`) diferentes dos valores de produção em `appsettings.json`, para manter a suíte rápida; a config de produção não é exercitada literalmente pelos testes automatizados (apenas por inspeção e pelo roteiro manual).
+
 ## Testes
 
 - Backend: `tests/Inventory.Tests` (xUnit) e `tests/Billing.Tests` (xUnit).
@@ -317,10 +421,15 @@ Fluxo visual sobre o endpoint `POST /api/invoices/{id}/print` (ver "Impressão e
 - Cobertura da Task 09 (`Billing.Tests`) — ver também "Impressão e fechamento de notas (Billing.Api, Task 09)":
   - `InvoicesPrintApiTests.cs`: orquestração do fluxo de impressão isolada com `FakeInventoryStockClient`.
   - `InvoicesPrintRealInventoryIntegrationTests.cs`: ponta a ponta com Inventory.Api real e dois bancos Postgres reais (Testcontainers), incluindo `Print_When_Stock_Was_Debited_But_Response_Was_Lost_Retry_Closes_Without_Second_Debit`, que reproduz a janela crítica "saldo debitado mas Billing não fechou a nota" com uma baixa real seguida de retentativa idempotente.
+- Cobertura da Task 11 (`Billing.Tests`) — ver "Resiliência Billing → Inventory (Task 11)" para o detalhamento completo:
+  - `InventoryResilienceClientTests.cs`: retry após falha transitória, esgotamento de retries, timeout por tentativa, 404/409 sem retry, cancelamento pelo chamador sem retry, ciclo completo do circuit breaker (abre/half-open/fecha), todos contra a pipeline real (`AddInventoryResilience`) com um `HttpMessageHandler` script-ável no lugar de um socket real.
+  - `InvoicesPrintResilienceApiTests.cs`: esgotamento de retries e timeout por tentativa através do fluxo HTTP completo (`POST /api/invoices/{id}/print`), comprovando 503 + `ProblemDetails` com `traceId` + nota permanece `Open`.
+  - `InvoicesPrintRealInventoryIntegrationTests.cs`, novo teste `Print_When_First_Attempt_Response_Is_Lost_At_Transport_Level_Automatic_Retry_Reuses_OperationId_And_Debits_Once`: cenário crítico com infraestrutura real (Inventory.Api real + dois Postgres via Testcontainers), retentativa automática pela pipeline real (não simulada manualmente pelo teste), reuso do `OperationId`, débito único comprovado no banco do Inventory.
 
 ## Limitações conhecidas
 
 - Concorrência simultânea entre baixas distintas (`OperationId` diferentes) disputando o saldo do mesmo produto ainda não foi implementada nem testada: o mecanismo atual (transação explícita por requisição + check constraint `CK_products_balance_non_negative` no banco) evita saldo negativo mesmo sob corrida, mas não há tratamento dedicado (ex.: lock otimista/pessimista) nem teste automatizado simulando duas baixas simultâneas contra um produto com saldo baixo (ex.: saldo 1). Fica reservado para uma tarefa futura dedicada a concorrência.
 - O tratamento de corrida para requisições com o **mesmo** `OperationId` chegando simultaneamente (violação do índice único capturada como `DbUpdateException`) existe no código da Task 08, mas não é exercitado por um teste automatizado com requisições paralelas reais — apenas revisado por inspeção.
 - Impressões concorrentes (Task 09) sobre a **mesma nota** (duas requisições `POST /print` simultâneas) não têm proteção dedicada nem teste automatizado — apenas a sequência de tentativas/retentativas para a mesma nota via `OperationId` idempotente está coberta. Fica reservado para a task futura de concorrência; ver "Impressão e fechamento de notas (Billing.Api, Task 09)".
+- Task 11 (resiliência): não cobre concorrência entre impressões simultâneas para a mesma nota (mesma limitação acima); o circuit breaker mantém estado apenas em memória por processo/instância do Billing.Api (via `Polly.Registry.ResiliencePipelineRegistry`), sem coordenação entre múltiplas réplicas — aceitável no escopo local deste desafio; os testes automatizados de retry/timeout/circuit breaker usam valores reduzidos (`ResilientInventoryClientFactory.FastTestOptions`), diferentes dos valores de produção em `appsettings.json`, para manter a suíte rápida — a configuração de produção é validada apenas por inspeção e pelo roteiro manual.
 
