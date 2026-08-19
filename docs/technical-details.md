@@ -548,3 +548,190 @@ mas emite um `WARNING` de orçamento de bundle:
   (fora do escopo do desafio). Detalhamento de cada uma nas seções correspondentes acima e no
   README (seção "Limitações conhecidas").
 
+## Direção visual — Folha de Trabalho (evolução ad-hoc, exclusivamente visual)
+
+Evolução puramente visual do frontend, solicitada diretamente pelo usuário (não é uma task
+numerada de `docs/tasks/` nem reabre a Task 13). Nenhum contrato HTTP, DTO, rota ou regra de
+negócio foi alterado; nenhum arquivo de backend foi tocado (confirmado por `git status --short`
+antes e depois — apenas caminhos sob `src/frontend/invoice-web` e este documento aparecem no
+diff). Referência: mockup de um ERP fiscal sóbrio e técnico ("Folha de Trabalho").
+
+### Tokens (custom properties globais, `src/styles.scss`, bloco `:root`)
+
+| Token | Valor | Uso |
+| --- | --- | --- |
+| `--color-bg-app` | `#e6e6e8` | Fundo cinza-claro por trás de todo o app |
+| `--color-bg-paper` | `#ffffff` | Área central "papel" (topbar e conteúdo) |
+| `--color-ink` | `#1d2d3d` | Texto principal |
+| `--color-ink-secondary` | `#566270` | Texto auxiliar/legenda (levemente escurecido em relação à referência `#66717c` — ambos passam WCAG AA ≥4.5:1 sobre branco; o valor final foi mantido próximo do original) |
+| `--color-action` | `#4f7699` | Ações primárias (nav ativa, botões, foco) — escurecido a partir do `#5980a6` da referência para garantir 4.5:1 tanto como texto sobre branco quanto como texto branco sobre o próprio fundo (o tom original ficava em ~4.15:1, abaixo do AA para texto normal) |
+| `--color-action-strong` | `#3f6280` | Variante mais escura (ex.: índice do item na nota) |
+| `--color-action-tint` | `#edf4fa` | Fundo de seleção/hover (valor da referência, inalterado — só usado como fundo, não como texto) |
+| `--color-border` | `#d7d9dc` | Bordas finas |
+| `--color-success` / `--color-success-bg` | `#2f6b55` / `#eaf3ef` | Badge "Aberta" |
+| `--color-warning` / `--color-warning-bg` | `#946515` / `#faf1e3` | Alerta de impressão (irreversibilidade) |
+| `--color-error` / `--color-error-bg` | `#963b3b` / `#f8ecec` | Mensagens de erro/validação |
+| `--font-heading` | `'Bahnschrift Condensed', 'Arial Narrow', 'Segoe UI Semibold', Arial, sans-serif` | Títulos (`h1`/`h2`/`h3`, marca) — pilha local, sem `@font-face` |
+| `--font-body` | `'Segoe UI', Inter, Roboto, Arial, sans-serif` | Corpo do texto |
+| `--font-mono` | `'Roboto Mono', 'Consolas', monospace` | Dados técnicos (código de produto, números de nota, quantidades) |
+
+Todos os componentes consomem essas variáveis; nenhum hex novo foi espalhado pelos templates.
+
+### Angular Material: token override oficial, sem `::ng-deep`
+
+`html { @include mat.theme(...) }` continua definindo a paleta `azure`/`blue` (decisão já registrada
+em `docs/architecture.md`). Para o visual sóbrio ("cantos pouco arredondados, sem pílulas, sem
+sombra"), foram usados os mixins oficiais de override de tokens do Angular Material 21
+(`mat.card-overrides`, `mat.button-overrides`, `mat.form-field-overrides`), também dentro do bloco
+`html { }` em `src/styles.scss` — API pública documentada, sem `::ng-deep` e sem depender de nomes
+de classe internos (`.mat-mdc-*`). Isso reduz a elevação/sombra dos `mat-card` e achata os cantos
+dos botões e campos (4px) sem tocar em internals.
+
+**Decisão deliberada — tabelas de listagem sem `MatTableModule`:** para evitar depender de
+classes internas do Angular Material (`.mat-mdc-header-cell`, `.mat-mdc-row`, etc.) — que exigiriam
+`::ng-deep` ou seletores globais acoplados a internals para restilizar (cabeçalho caixa-alta,
+divisórias só horizontais) — as listagens de produtos (`ProductsPage`), notas
+(`InvoicesListPage`) e itens da nota (`InvoiceDetailPage`) passaram a usar `<table>` HTML semântico
+puro, estilizado pela classe utilitária compartilhada `.data-table` (`src/styles.scss`). Mesma
+estrutura de dados e colunas de antes; só a implementação de apresentação mudou. `MatTableModule`
+foi removido dos `imports` desses três componentes (não mais usado). `InvoicePrintView` não foi
+tocado (já usava HTML puro).
+
+### Shell (`src/app/layout/shell`)
+
+Reescrito de `mat-sidenav-container` (drawer lateral, `BreakpointObserver`/`isHandset`, ícones) para
+uma barra de navegação superior fixa sem drawer em nenhum breakpoint:
+
+- `Shell` não injeta mais `BreakpointObserver` (não há mais lógica de abrir/fechar menu — a
+  responsividade é só CSS/`@media`). `MatSidenavModule`, `MatListModule`, `MatIconModule` e
+  `MatButtonModule` foram removidos dos `imports` (não usados no novo template).
+- Marca "KORP ERP" (`.app-shell__brand-name`) + subtítulo "Fiscal" (`.app-shell__brand-tag`) à
+  esquerda; navegação com exatamente dois links, "Produtos" e "Notas fiscais", à direita
+  (`.app-shell__nav`), usando `routerLinkActive` + `[ariaCurrentWhenActive]="'page'"` (rota ativa
+  ganha `aria-current="page"`, texto mais forte e borda inferior azul-aço).
+- Conteúdo renderizado dentro de `.app-shell__paper` (fundo branco, borda fina, `max-width: 1040px`,
+  centralizado), sobre `.app-shell__content` com fundo cinza (`--color-bg-app`) herdado do body.
+- Responsivo só via `@media (max-width: 768px)` (margens reduzidas) e `@media (max-width: 599px)`
+  (marca e navegação empilham em duas linhas, sem esconder nenhum link); `.app-shell__nav-link` tem
+  `min-height: 44px` para alvo de toque adequado em mobile.
+
+### Rotas — comportamento visual por tela
+
+1. **`/produtos`**: `h1` "Produtos" + subtítulo curto; formulário e listagem continuam dois módulos
+   (`mat-card`) na mesma página (nunca modal); listagem trocada para `.data-table`; loading, vazio,
+   erro com retry e submissão preservados sem alteração de lógica (`products-page.ts` só perdeu o
+   campo `displayedColumns`, não mais necessário).
+2. **`/notas`**: título alterado de "Notas" para "Notas fiscais" + subtítulo "Emissão e impressão de
+   notas"; botão alterado de "Nova nota" para "Nova nota fiscal"; tabela ganhou uma coluna nova
+   "Itens" (`invoice.items.length`, dado já presente na resposta de `GET /api/invoices`, sem
+   chamada HTTP adicional — confirmado em `Billing.Api/Features/Invoices/InvoiceService.cs`,
+   `GetAllAsync` já projeta `Items` para cada nota da listagem); badges "Aberta"/"Fechada" com texto
+   explícito preservados (`InvoiceStatusBadge`, só CSS alterado). **Correção de acessibilidade**: a
+   linha da tabela, antes clicável só via `[routerLink]` num `<tr>` (sem foco de teclado), agora tem
+   `tabindex="0"`, `role="link"`, `aria-label` com o número da nota e navega tanto por clique quanto
+   por `Enter`/`Espaço` (`InvoicesListPage.openInvoice`/`onRowKeydown`, usando `Router.navigate`
+   diretamente em vez de `routerLink` no `<tr>`, já que `<tr>` não é um elemento focável nativo).
+3. **`/notas/nova`**: `h1` alterado de "Nova nota" para "Nova nota fiscal"; cada item do
+   `FormArray` ganhou um índice numérico visual (`.invoice-form-page__item-index`) e passou a ser
+   um módulo com borda própria (fundo `--color-bg-app`, borda `--color-border`); `FormArray`,
+   validação de duplicidade (`duplicateProductsValidator`), quantidade mínima/inteira, remoção de
+   item, mensagens de erro (400/404/409/503) e navegação pós-cadastro não foram tocados no
+   componente (`invoice-form-page.ts` inalterado, exceto pela troca de tokens de cor CSS).
+4. **`/notas/:id`**: reescrita mais próxima da referência — rótulo pequeno "Nota fiscal"
+   (`.invoice-detail-page__eyebrow`), número em destaque com fonte monoespaçada
+   (`.invoice-detail-page__number`, ex. "Nº 42"), badge de status posicionado no canto superior
+   direito do bloco do documento (`.invoice-detail-page__document-header`, `justify-content:
+   space-between`), nova linha de resumo "Itens" com a contagem (`loadedInvoice.items.length`, já
+   carregado pela mesma chamada `GET /api/invoices/{id}`, sem HTTP adicional). Botão alterado de
+   "Imprimir" para "Imprimir e fechar nota" (mesmo `(click)="print()"`, mesmo guard de clique
+   duplicado, mesmo `[disabled]`). Novo alerta discreto, visível somente enquanto `canPrint()` é
+   verdadeiro (nota `Open`): "Imprimir fecha a nota e realiza a baixa no estoque. A ação não pode
+   ser desfeita." (`.invoice-detail-page__notice`, borda esquerda grossa em `--color-warning`).
+   Tabela de itens trocada para `.data-table` (mesmas colunas: código, descrição, quantidade).
+   `InvoiceDetailPage.print()`/`handlePrintSuccess`/`handlePrintError`/`loadInvoice` não foram
+   alterados: guard síncrono contra clique duplicado, mapeamento de erros 404/409/503/0 e
+   `window.print()` disparado só dentro de `handlePrintSuccess` (ou seja, só após a resposta 200 de
+   `POST /api/invoices/{id}/print`) continuam exatamente como antes.
+5. **Impressão (`InvoicePrintView`)**: componente e comportamento preservados integralmente (não
+   editado nesta task) — continua `display: none` na tela e `display: block` só em `@media print`,
+   mostrando número, status, datas e a tabela de itens em HTML/CSS simples. O que mudou foi a regra
+   global de impressão em `src/styles.scss`: antes escondia `.shell__sidenav`/`.shell__toolbar`
+   (classes que não existem mais); agora esconde `.app-shell__topbar` (nova barra superior) e reseta
+   `.app-shell__paper`/`body` para fundo branco sem margens/bordas dentro de `@media print`, para
+   que `window.print()` não vaze o fundo cinza da aplicação nem a navegação — mesmo objetivo do
+   código anterior, adaptado à nova estrutura de shell. Mantido o único `!important` do arquivo,
+   necessário tecnicamente para garantir que a regra de impressão vença qualquer estilo de tela.
+6. **404 (`NotFound`)**: mesma identidade visual (tokens, papel/fundo herdados do shell), rótulo
+   "Erro 404" adicionado, mensagem e link "Voltar ao início" preservados (`#not-found-title` e
+   `a[routerLink="/"]` inalterados, cobertos pelos testes existentes sem modificação).
+
+### Acessibilidade
+
+- Um único `h1` por rota, mantido em todas as telas.
+- Nova marcação `aria-current="page"` na rota ativa da navegação superior (`ariaCurrentWhenActive`
+  do `RouterLinkActive`), testada em `shell.spec.ts`.
+- Linhas de tabela clicáveis (`/notas`) acessíveis por teclado (`tabindex="0"`, `role="link"`,
+  `aria-label`, ativação por `Enter`/`Espaço`), testado em `invoices-list-page.spec.ts`.
+- Foco visível customizado (`:focus-visible`) nos links de navegação e linhas de tabela clicáveis,
+  usando `--color-action` como cor de contorno.
+- Badges de status continuam com texto explícito ("Aberta"/"Fechada"), não só cor.
+- `prefers-reduced-motion` não foi afetado (nenhuma animação nova foi introduzida; o app já não
+  usava animações customizadas além das transições padrão do Material).
+
+### Testes
+
+Nenhum assert funcional foi enfraquecido. Testes atualizados (mudança de seletor/texto por causa da
+reestruturação visual, sem alterar o que é verificado) e novos:
+
+- `shell.spec.ts`: reescrito — removidas as verificações de `mat-list-item`/sidenav; adicionadas
+  verificações de marca, exatamente dois links de navegação, ausência de `mat-sidenav`/drawer, e
+  `aria-current="page"` na rota ativa.
+- `products-page.spec.ts`: seletor de linhas de tabela `tr[mat-row]` → `tbody tr` (troca de
+  `mat-table` por `<table>` simples); nenhum outro assert alterado.
+- `invoices-list-page.spec.ts`: título esperado `'Notas'` → `'Notas fiscais'`; novo teste para o
+  texto do botão "Nova nota fiscal"; seletor de linhas `tr[mat-row]` → `tbody tr`; dois testes novos
+  para navegação da linha por clique e por teclado (`Enter`).
+- `invoice-form-page.spec.ts`: título esperado `'Nova nota'` → `'Nova nota fiscal'`.
+- `invoice-detail-page.spec.ts`: seletor de linhas de itens restrito a
+  `.invoice-detail-page__table-wrapper tbody tr` (a página agora também contém a tabela oculta do
+  `InvoicePrintView`, que também usa `<table>`, então o seletor precisou ser escopado para não
+  contar as duas tabelas); dois testes novos para o alerta de impressão irreversível (presente
+  quando `Open`, ausente quando `Closed`); um teste novo para a contagem de itens no resumo.
+
+Resultado: **66/66 testes** (58 originais preservados/ajustados por seletor + 8 novos), `0` falhas.
+
+### Resultado da validação técnica (frontend, `src/frontend/invoice-web`)
+
+| Comando | Resultado |
+| --- | --- |
+| `npm run format:check` | `All matched files use Prettier code style!` |
+| `npm run lint` | `ESLint: No issues found` |
+| `npm test` | `11 arquivos, 66/66 testes, 0 falhas` |
+| `npm run build` | Sucesso — initial bundle `446.27 kB` raw / `114.32 kB` transferência estimada |
+
+### Resultado da validação técnica (backend, confirmando ausência de efeito colateral)
+
+| Comando | Resultado |
+| --- | --- |
+| `dotnet build src/backend/Korp.sln --configuration Release` | `5 projetos, 0 erros, 0 avisos` |
+| `dotnet test src/backend/Korp.sln --configuration Release` | `Inventory.Tests` 55/55, `Billing.Tests` 61/61 — `116/116` |
+
+`git status --short` antes e depois do backend build/test não mostrou nenhum arquivo sob
+`src/backend`/`tests` alterado — nenhum efeito colateral no backend.
+
+### Limitações desta evolução visual
+
+- Validação visual em navegador real (1440×900, 1280×720, 768×1024, 390×844, 360×800) **não foi
+  executada** neste ambiente (sem ferramenta de automação de navegador/screenshot disponível para
+  este agente); a revisão foi feita por leitura estrutural de template/CSS e pelos testes
+  automatizados (estrutura DOM, classes, `aria-current`, foco). Fica pendente uma validação manual
+  humana ou de uma ferramenta de browser externa nos breakpoints listados.
+- Ajuste de tom em `--color-action`/`--color-ink-secondary` em relação aos valores exatos da
+  referência (`#5980a6`/`#66717c`) foi uma decisão de contraste (WCAG AA), documentada na tabela de
+  tokens acima; visualmente o tom permanece o mesmo azul-aço/cinza-azulado.
+- `mat-raised-button` (botão "Imprimir e fechar nota") manteve a elevação/sombra padrão do Material
+  para esse variante ("protected") — o token de elevação correspondente
+  (`protected-container-elevation-shadow`) não foi sobrescrito nesta rodada (só o formato do canto);
+  o efeito visual é pequeno (o botão já não tem canto arredondado nem cor fora da paleta) e não
+  compromete a leitura da tela como "documento administrativo".
+

@@ -13,7 +13,6 @@ import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatTableModule } from '@angular/material/table';
 import { finalize } from 'rxjs';
 
 import { NotificationService } from '../../core/services/notification.service';
@@ -47,7 +46,6 @@ function integerValidator(control: AbstractControl): ValidationErrors | null {
     MatFormFieldModule,
     MatInputModule,
     MatProgressSpinnerModule,
-    MatTableModule,
   ],
   templateUrl: './products-page.html',
   styleUrl: './products-page.scss',
@@ -57,8 +55,6 @@ export class ProductsPage {
   private readonly productsService = inject(ProductsService);
   private readonly notification = inject(NotificationService);
   private readonly destroyRef = inject(DestroyRef);
-
-  protected readonly displayedColumns = ['code', 'description', 'balance'] as const;
 
   protected readonly products = signal<Product[]>([]);
   protected readonly loading = signal(true);

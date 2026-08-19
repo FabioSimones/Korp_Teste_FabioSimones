@@ -1,12 +1,11 @@
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatTableModule } from '@angular/material/table';
 import { finalize } from 'rxjs';
 
 import { InvoiceStatusBadge } from '../invoice-status-badge/invoice-status-badge';
@@ -27,7 +26,6 @@ import { InvoicesService } from '../invoices.service';
     MatCardModule,
     MatIconModule,
     MatProgressSpinnerModule,
-    MatTableModule,
     InvoiceStatusBadge,
   ],
   templateUrl: './invoices-list-page.html',
@@ -36,8 +34,7 @@ import { InvoicesService } from '../invoices.service';
 export class InvoicesListPage {
   private readonly invoicesService = inject(InvoicesService);
   private readonly destroyRef = inject(DestroyRef);
-
-  protected readonly displayedColumns = ['number', 'createdAt', 'status'] as const;
+  private readonly router = inject(Router);
 
   protected readonly invoices = signal<Invoice[]>([]);
   protected readonly loading = signal(true);
@@ -49,6 +46,18 @@ export class InvoicesListPage {
 
   protected reload(): void {
     this.loadInvoices();
+  }
+
+  /** Opens the invoice detail route. Used by both click and keyboard (Enter/Space) row activation. */
+  protected openInvoice(id: number): void {
+    this.router.navigate(['/notas', id]);
+  }
+
+  protected onRowKeydown(event: KeyboardEvent, id: number): void {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      this.openInvoice(id);
+    }
   }
 
   private loadInvoices(): void {

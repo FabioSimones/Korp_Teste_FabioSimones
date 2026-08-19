@@ -1,6 +1,6 @@
 <section class="invoice-form-page" aria-labelledby="invoice-form-title">
   <div class="invoice-form-page__header">
-    <h1 id="invoice-form-title">Nova nota</h1>
+    <h1 id="invoice-form-title">Nova nota fiscal</h1>
     <a mat-stroked-button routerLink="/notas">Voltar para a listagem</a>
   </div>
 
@@ -30,6 +30,8 @@
           novalidate
           aria-label="Formulário de cadastro de nota"
         >
+          <h2 class="invoice-form-page__items-title">Itens da nota</h2>
+
           <div class="invoice-form-page__items" formArrayName="items">
             @if (itemsValue().length === 0) {
               <p class="invoice-form-page__empty">
@@ -39,6 +41,8 @@
 
             @for (item of items.controls; track item; let i = $index) {
               <div class="invoice-form-page__item" [formGroupName]="i">
+                <span class="invoice-form-page__item-index">{{ i + 1 }}</span>
+
                 <mat-form-field appearance="outline" class="invoice-form-page__item-product">
                   <mat-label>Produto</mat-label>
                   <mat-select

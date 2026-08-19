@@ -65,7 +65,7 @@ describe('InvoiceFormPage', () => {
     setup();
 
     const title = fixture.nativeElement.querySelector('#invoice-form-title');
-    expect(title?.textContent?.trim()).toBe('Nova nota');
+    expect(title?.textContent?.trim()).toBe('Nova nota fiscal');
     expect(productsService.getAll).toHaveBeenCalled();
   });
 

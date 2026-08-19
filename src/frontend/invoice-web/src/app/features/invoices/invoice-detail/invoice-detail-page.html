@@ -20,20 +20,27 @@
           <button mat-stroked-button type="button" (click)="reload()">Tentar novamente</button>
         </div>
       } @else if (invoice(); as loadedInvoice) {
+        <div class="invoice-detail-page__document-header">
+          <div class="invoice-detail-page__document-title">
+            <span class="invoice-detail-page__eyebrow">Nota fiscal</span>
+            <span class="invoice-detail-page__number">Nº {{ loadedInvoice.number }}</span>
+          </div>
+          <app-invoice-status-badge
+            class="invoice-detail-page__status"
+            [status]="loadedInvoice.status"
+          />
+        </div>
+
         <div class="invoice-detail-page__summary">
           <div>
-            <span class="invoice-detail-page__label">Número</span>
-            <span class="invoice-detail-page__value">{{ loadedInvoice.number }}</span>
-          </div>
-          <div>
-            <span class="invoice-detail-page__label">Data</span>
+            <span class="invoice-detail-page__label">Emitida em</span>
             <span class="invoice-detail-page__value">
               {{ loadedInvoice.createdAtUtc | date: 'dd/MM/yyyy HH:mm' }}
             </span>
           </div>
           <div>
-            <span class="invoice-detail-page__label">Status</span>
-            <app-invoice-status-badge [status]="loadedInvoice.status" />
+            <span class="invoice-detail-page__label">Itens</span>
+            <span class="invoice-detail-page__value">{{ loadedInvoice.items.length }}</span>
           </div>
           @if (loadedInvoice.closedAtUtc) {
             <div>
@@ -44,6 +51,12 @@
             </div>
           }
         </div>
+
+        @if (canPrint()) {
+          <p class="invoice-detail-page__notice">
+            Imprimir fecha a nota e realiza a baixa no estoque. A ação não pode ser desfeita.
+          </p>
+        }
 
         <div class="invoice-detail-page__actions">
           <button
@@ -61,7 +74,7 @@
               ></mat-progress-spinner>
               <span>Imprimindo...</span>
             } @else {
-              <span>Imprimir</span>
+              <span>Imprimir e fechar nota</span>
             }
           </button>
           @if (!canPrint()) {
@@ -79,29 +92,23 @@
           <p class="invoice-detail-page__empty">Esta nota não possui itens.</p>
         } @else {
           <div class="invoice-detail-page__table-wrapper">
-            <table
-              mat-table
-              [dataSource]="loadedInvoice.items"
-              class="invoice-detail-page__table"
-              aria-label="Itens da nota"
-            >
-              <ng-container matColumnDef="code">
-                <th mat-header-cell *matHeaderCellDef>Código</th>
-                <td mat-cell *matCellDef="let item">{{ item.productCode }}</td>
-              </ng-container>
-
-              <ng-container matColumnDef="description">
-                <th mat-header-cell *matHeaderCellDef>Descrição</th>
-                <td mat-cell *matCellDef="let item">{{ item.productDescription }}</td>
-              </ng-container>
-
-              <ng-container matColumnDef="quantity">
-                <th mat-header-cell *matHeaderCellDef>Quantidade</th>
-                <td mat-cell *matCellDef="let item">{{ item.quantity }}</td>
-              </ng-container>
-
-              <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-              <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+            <table class="data-table" aria-label="Itens da nota">
+              <thead>
+                <tr>
+                  <th scope="col">Código</th>
+                  <th scope="col">Descrição</th>
+                  <th scope="col">Quantidade</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (item of loadedInvoice.items; track item.id) {
+                  <tr>
+                    <td class="data-table__mono">{{ item.productCode }}</td>
+                    <td>{{ item.productDescription }}</td>
+                    <td class="data-table__number">{{ item.quantity }}</td>
+                  </tr>
+                }
+              </tbody>
             </table>
           </div>
         }

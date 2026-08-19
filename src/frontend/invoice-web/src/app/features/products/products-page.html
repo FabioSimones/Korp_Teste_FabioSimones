@@ -1,5 +1,8 @@
 <section class="products-page" aria-labelledby="products-title">
-  <h1 id="products-title">Produtos</h1>
+  <header class="products-page__header">
+    <h1 id="products-title">Produtos</h1>
+    <p class="products-page__subtitle">Cadastro e consulta de produtos e saldos de estoque.</p>
+  </header>
 
   <mat-card class="products-page__card">
     <mat-card-header>
@@ -112,29 +115,23 @@
         <p class="products-page__empty">Nenhum produto cadastrado até o momento.</p>
       } @else {
         <div class="products-page__table-wrapper">
-          <table
-            mat-table
-            [dataSource]="products()"
-            class="products-page__table"
-            aria-label="Lista de produtos cadastrados"
-          >
-            <ng-container matColumnDef="code">
-              <th mat-header-cell *matHeaderCellDef>Código</th>
-              <td mat-cell *matCellDef="let product">{{ product.code }}</td>
-            </ng-container>
-
-            <ng-container matColumnDef="description">
-              <th mat-header-cell *matHeaderCellDef>Descrição</th>
-              <td mat-cell *matCellDef="let product">{{ product.description }}</td>
-            </ng-container>
-
-            <ng-container matColumnDef="balance">
-              <th mat-header-cell *matHeaderCellDef>Saldo</th>
-              <td mat-cell *matCellDef="let product">{{ product.balance }}</td>
-            </ng-container>
-
-            <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-            <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+          <table class="data-table" aria-label="Lista de produtos cadastrados">
+            <thead>
+              <tr>
+                <th scope="col">Código</th>
+                <th scope="col">Descrição</th>
+                <th scope="col">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (product of products(); track product.id) {
+                <tr>
+                  <td class="data-table__mono">{{ product.code }}</td>
+                  <td>{{ product.description }}</td>
+                  <td class="data-table__number">{{ product.balance }}</td>
+                </tr>
+              }
+            </tbody>
           </table>
         </div>
       }

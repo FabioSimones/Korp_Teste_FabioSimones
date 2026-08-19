@@ -6,7 +6,6 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatTableModule } from '@angular/material/table';
 import { finalize } from 'rxjs';
 
 import { NotificationService } from '../../../core/services/notification.service';
@@ -30,7 +29,6 @@ import { InvoicesService } from '../invoices.service';
     MatButtonModule,
     MatCardModule,
     MatProgressSpinnerModule,
-    MatTableModule,
     InvoiceStatusBadge,
     InvoicePrintView,
   ],
@@ -42,8 +40,6 @@ export class InvoiceDetailPage {
   private readonly invoicesService = inject(InvoicesService);
   private readonly notification = inject(NotificationService);
   private readonly destroyRef = inject(DestroyRef);
-
-  protected readonly displayedColumns = ['code', 'description', 'quantity'] as const;
 
   protected readonly invoice = signal<Invoice | null>(null);
   protected readonly loading = signal(true);

@@ -2,6 +2,19 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+  gap: 8px;
   padding: 24px 0;
+}
+
+.not-found__eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-error);
+}
+
+.not-found__message {
+  color: var(--color-ink-secondary);
+  margin: 0 0 8px;
 }

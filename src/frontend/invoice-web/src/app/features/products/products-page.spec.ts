@@ -80,7 +80,7 @@ describe('ProductsPage', () => {
   it('should render a table row for each registered product', () => {
     setup(of(sampleProducts));
 
-    const rows = fixture.nativeElement.querySelectorAll('tr[mat-row]');
+    const rows = fixture.nativeElement.querySelectorAll('tbody tr');
     expect(rows.length).toBe(2);
     expect(fixture.nativeElement.textContent).toContain('A1');
     expect(fixture.nativeElement.textContent).toContain('Produto B');
@@ -100,7 +100,7 @@ describe('ProductsPage', () => {
     fixture.detectChanges();
 
     expect(productsService.getAll).toHaveBeenCalledTimes(2);
-    expect(fixture.nativeElement.querySelectorAll('tr[mat-row]').length).toBe(2);
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(2);
   });
 
   describe('form validation', () => {
@@ -149,7 +149,7 @@ describe('ProductsPage', () => {
         balance: 7,
       });
 
-      const rows = fixture.nativeElement.querySelectorAll('tr[mat-row]');
+      const rows = fixture.nativeElement.querySelectorAll('tbody tr');
       expect(rows.length).toBe(1);
       const codeInput: HTMLInputElement = fixture.nativeElement.querySelector(
         'input[formcontrolname="code"]',

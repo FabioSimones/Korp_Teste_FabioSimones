@@ -87,8 +87,32 @@ describe('InvoiceDetailPage', () => {
     expect(content).toContain('Produto A');
     expect(content).toContain('B2');
 
-    const rows = fixture.nativeElement.querySelectorAll('tr[mat-row]');
+    const rows = fixture.nativeElement.querySelectorAll(
+      '.invoice-detail-page__table-wrapper tbody tr',
+    );
     expect(rows.length).toBe(2);
+  });
+
+  it('should render the item count in the summary', () => {
+    setup();
+
+    expect(fixture.nativeElement.textContent).toContain('2');
+  });
+
+  it('should show the irreversible stock debit notice only while the invoice is open', () => {
+    setup(of(openInvoice));
+
+    expect(
+      fixture.nativeElement.querySelector('.invoice-detail-page__notice')?.textContent,
+    ).toContain(
+      'Imprimir fecha a nota e realiza a baixa no estoque. A ação não pode ser desfeita.',
+    );
+  });
+
+  it('should not show the irreversible stock debit notice for a closed invoice', () => {
+    setup(of(closedInvoice));
+
+    expect(fixture.nativeElement.querySelector('.invoice-detail-page__notice')).toBeFalsy();
   });
 
   it('should show a not-found message on 404', () => {
