@@ -218,15 +218,58 @@ describe('InvoiceDetailPage', () => {
     expect(invoicesService.print).toHaveBeenCalledTimes(1);
     expect(invoicesService.print).toHaveBeenCalledWith(5);
     expect(fixture.nativeElement.textContent).toContain('Fechada');
-    expect(notification.success).toHaveBeenCalledTimes(1);
-    expect(notification.success).toHaveBeenCalledWith('Nota Nº 42 impressa e fechada com sucesso.');
     expect(notification.error).not.toHaveBeenCalled();
     expect(printSpy).toHaveBeenCalledTimes(1);
-    // window.print() must only fire after the toast confirms the backend
-    // has already closed the invoice, never speculatively before it.
-    expect(printSpy.mock.invocationCallOrder[0]).toBeGreaterThan(
-      notification.success.mock.invocationCallOrder[0],
-    );
+  });
+
+  it('should have flushed the closed invoice to the DOM (including app-invoice-print-view) by the time window.print() is called', () => {
+    let printViewTextAtPrintTime: string | null = null;
+    setup(of(openInvoice), of(closedInvoice));
+    // Overrides the default no-op mock installed by `setup()` so we can
+    // inspect the DOM synchronously from inside the call itself — the only
+    // way to prove the print view was already re-rendered *before*
+    // `window.print()` ran, not merely by the time the test assertions run
+    // (which could pass even with stale DOM, since `fixture.detectChanges()`
+    // below would paper over the bug).
+    printSpy.mockRestore();
+    printSpy = vi.spyOn(window, 'print').mockImplementation(() => {
+      printViewTextAtPrintTime =
+        fixture.nativeElement.querySelector('app-invoice-print-view')?.textContent ?? null;
+    });
+
+    printButton().click();
+
+    expect(printSpy).toHaveBeenCalledTimes(1);
+    expect(printViewTextAtPrintTime).not.toBeNull();
+    expect(printViewTextAtPrintTime).toContain('Fechada');
+    expect(printViewTextAtPrintTime).not.toContain('Aberta');
+  });
+
+  it('should not show the success toast before window.print(), and show it exactly once with the invoice number after the print dialog closes (afterprint)', () => {
+    setup(of(openInvoice), of(closedInvoice));
+
+    printButton().click();
+    fixture.detectChanges();
+
+    expect(printSpy).toHaveBeenCalledTimes(1);
+    expect(notification.success).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new Event('afterprint'));
+
+    expect(notification.success).toHaveBeenCalledTimes(1);
+    expect(notification.success).toHaveBeenCalledWith('Nota Nº 42 impressa e fechada com sucesso.');
+  });
+
+  it('should show the success toast only once even if afterprint fires more than once', () => {
+    setup(of(openInvoice), of(closedInvoice));
+
+    printButton().click();
+    fixture.detectChanges();
+
+    window.dispatchEvent(new Event('afterprint'));
+    window.dispatchEvent(new Event('afterprint'));
+
+    expect(notification.success).toHaveBeenCalledTimes(1);
   });
 
   it('should not trigger a second HTTP call when the button is clicked again while a request is in flight', () => {
@@ -257,6 +300,7 @@ describe('InvoiceDetailPage', () => {
     );
     expect(fixture.nativeElement.querySelector('.invoice-detail-page__print-error')).toBeFalsy();
     expect(printSpy).not.toHaveBeenCalled();
+    expect(notification.success).not.toHaveBeenCalled();
     // The invoice is still rendered as Open: the frontend never flips
     // status locally on a failed print, only Billing.Api's response does.
     expect(fixture.nativeElement.textContent).toContain('Aberta');

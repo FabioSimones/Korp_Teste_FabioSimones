@@ -23,3 +23,4 @@ Os commits correspondentes a cada task devem ser consultados com `git log --onel
 | 14 | Usabilidade e navegação de dados (paginação, ordenação e refino de UX) | Concluída |
 | 15 | Exigir saldo inicial positivo no cadastro de produtos | Concluída |
 | 16 | Documentação visual e execução assistida | Concluída |
+| 17 | Higienizar a impressão da nota fiscal | Concluída |

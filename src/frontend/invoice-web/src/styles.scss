@@ -302,6 +302,15 @@ h3 {
 // invoice-detail-page) shows only the printable content of the active
 // route (e.g. app-invoice-print-view), not the surrounding navigation or the
 // gray application background.
+//
+// Also hides `.cdk-overlay-container` (and its `.cdk-overlay-backdrop`):
+// this is the single, central place for that rule because every Angular
+// CDK/Material overlay (snack bars, dialogs, menus, tooltips) is appended
+// directly under <body> by the CDK, outside every component's own view —
+// so one global selector here covers all of them, without needing
+// `::ng-deep` or a per-component print rule. This is what stops the
+// "Nota Nº X impressa..." success toast (a snack bar) from appearing inside
+// the printed output when `window.print()` is called right after it opens.
 @media print {
   .app-shell__topbar,
   .app-shell__content {
@@ -317,6 +326,11 @@ h3 {
     margin: 0;
     padding: 0;
     border: none;
+  }
+
+  .cdk-overlay-container,
+  .cdk-overlay-backdrop {
+    display: none !important;
   }
 
   body {
