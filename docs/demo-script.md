@@ -152,7 +152,7 @@ Pré-condição: containers do `docker compose` `healthy`, migrations aplicadas,
 - **Ferramenta**: terminal.
 - **Ação**: `dotnet test src/backend/Korp.sln --configuration Release` (backend) e `npm test`
   (frontend, em `src/frontend/invoice-web`).
-- **Resultado esperado**: 116 testes de backend (55 Inventory + 61 Billing) e 58 testes de
+- **Resultado esperado**: 176 testes de backend (88 Inventory + 88 Billing) e 211 testes de
   frontend, todos aprovados.
 - **Evidência a mostrar**: resumo final de cada execução (`Aprovado! ...` / `Tests ... passed`).
 - **Recuperação**: se algum teste falhar por Docker não estar em execução, iniciar o Docker Desktop

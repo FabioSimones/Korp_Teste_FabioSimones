@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -41,6 +41,7 @@ export class InvoiceDetailPage {
   private readonly invoicesService = inject(InvoicesService);
   private readonly notification = inject(NotificationService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   protected readonly invoice = signal<Invoice | null>(null);
   protected readonly loading = signal(true);
@@ -99,13 +100,50 @@ export class InvoiceDetailPage {
       });
   }
 
+  /**
+   * `window.print()` only runs after the backend has confirmed the
+   * print/close (this callback only fires on HTTP success), so the
+   * printable view never opens for a request that is still in flight or
+   * that failed.
+   *
+   * `this.cdr.detectChanges()` runs a synchronous change-detection pass
+   * *before* `window.print()`. Without it, `window.print()` can execute
+   * before Angular has flushed the signal update to the DOM (signals don't
+   * guarantee a synchronous render on `.set()`), so the browser would print
+   * `app-invoice-print-view` still showing the pre-close snapshot (`Status:
+   * Aberta`) — exactly the bug this fixes. `detectChanges()` on this
+   * component's own view also walks into `app-invoice-print-view`, since
+   * it's a plain child node in this same template (see
+   * `invoice-detail-page.html`), so one call synchronizes both.
+   */
   private handlePrintSuccess(invoice: Invoice): void {
     this.invoice.set(invoice);
-    // `window.print()` only runs after the backend has confirmed the
-    // print/close (this callback only fires on HTTP success), so the
-    // printable view never opens for a request that is still in flight or
-    // that failed.
-    this.notification.success(`Nota Nº ${invoice.number} impressa e fechada com sucesso.`);
+    this.cdr.detectChanges();
+    this.printAndNotifyOnceClosed(invoice.number);
+  }
+
+  /**
+   * Defers the success toast until the browser's print UI has actually been
+   * dismissed (printed or cancelled), via the standard `afterprint` event —
+   * never before `window.print()` is called, and never on a fixed delay.
+   * `afterprint` is the only cross-browser-reliable signal for "the print
+   * dialog closed": `window.print()` itself blocks script execution in some
+   * browsers (e.g. Chrome) but not others (e.g. Firefox), so code that ran
+   * "right after" the call could show the toast while the dialog is still
+   * open in some browsers.
+   */
+  private printAndNotifyOnceClosed(invoiceNumber: number): void {
+    const handleAfterPrint = (): void => {
+      window.removeEventListener('afterprint', handleAfterPrint);
+      this.notification.success(`Nota Nº ${invoiceNumber} impressa e fechada com sucesso.`);
+    };
+
+    window.addEventListener('afterprint', handleAfterPrint);
+    // Guards against a leaked listener if the user navigates away from this
+    // page while the print dialog is still open (afterprint would then
+    // never fire on this component instance).
+    this.destroyRef.onDestroy(() => window.removeEventListener('afterprint', handleAfterPrint));
+
     window.print();
   }
 
