@@ -47,17 +47,17 @@ public class InvoiceItem
 
         if (quantity <= 0)
         {
-            errors.Add($"Quantity for product '{productCode}' must be a positive integer.");
+            errors.Add($"A quantidade do produto '{productCode}' deve ser um número inteiro maior que zero.");
         }
 
         if (string.IsNullOrWhiteSpace(productCode))
         {
-            errors.Add($"Product code snapshot is required for product '{productId}'.");
+            errors.Add($"O código do produto '{productId}' é obrigatório.");
         }
 
         if (string.IsNullOrWhiteSpace(productDescription))
         {
-            errors.Add($"Product description snapshot is required for product '{productId}'.");
+            errors.Add($"A descrição do produto '{productId}' é obrigatória.");
         }
 
         if (errors.Count > 0)

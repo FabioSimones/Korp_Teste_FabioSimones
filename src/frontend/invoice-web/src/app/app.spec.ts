@@ -22,11 +22,15 @@ describe('App routing', () => {
   });
 
   it('should redirect the empty path to Produtos', async () => {
+    // Higher timeout than the suite default: this is the first test to
+    // exercise the full route tree (all lazy-loaded feature components),
+    // so it also pays the one-time JIT compilation cost for all of them;
+    // the next two tests reuse that cache and stay well under 5s.
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/');
 
     expect(harness.routeNativeElement?.querySelector('#products-title')).toBeTruthy();
-  });
+  }, 15000);
 
   it('should navigate to the Notas placeholder', async () => {
     const harness = await RouterTestingHarness.create();

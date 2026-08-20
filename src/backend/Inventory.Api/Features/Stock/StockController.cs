@@ -45,16 +45,18 @@ public class StockController : ControllerBase
         catch (ProductNotFoundException ex)
         {
             return NotFound(BuildProblem(
-                "Product not found.",
+                "Produto não encontrado.",
                 StatusCodes.Status404NotFound,
-                ex.Message));
+                ex.Message,
+                "PRODUCT_NOT_FOUND"));
         }
         catch (InsufficientProductBalanceException ex)
         {
             return Conflict(BuildProblem(
-                "Insufficient stock balance.",
+                "Saldo de estoque insuficiente.",
                 StatusCodes.Status409Conflict,
-                ex.Message));
+                ex.Message,
+                "INSUFFICIENT_STOCK"));
         }
     }
 
@@ -62,17 +64,18 @@ public class StockController : ControllerBase
     {
         var problem = new ValidationProblemDetails
         {
-            Title = "Invalid stock debit request.",
+            Title = "Requisição de baixa de estoque inválida.",
             Status = StatusCodes.Status400BadRequest,
             Detail = ex.Message,
             Instance = HttpContext.Request.Path,
         };
         problem.Errors["debit"] = ex.Errors.ToArray();
         problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        problem.Extensions["errorCode"] = "INVALID_STOCK_DEBIT";
         return problem;
     }
 
-    private ProblemDetails BuildProblem(string title, int status, string detail)
+    private ProblemDetails BuildProblem(string title, int status, string detail, string errorCode)
     {
         var problem = new ProblemDetails
         {
@@ -82,6 +85,7 @@ public class StockController : ControllerBase
             Instance = HttpContext.Request.Path,
         };
         problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        problem.Extensions["errorCode"] = errorCode;
         return problem;
     }
 }

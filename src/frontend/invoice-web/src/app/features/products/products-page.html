@@ -1,106 +1,47 @@
 <section class="products-page" aria-labelledby="products-title">
   <header class="products-page__header">
-    <h1 id="products-title">Produtos</h1>
-    <p class="products-page__subtitle">Cadastro e consulta de produtos e saldos de estoque.</p>
+    <div class="products-page__heading">
+      <h1 id="products-title">Produtos</h1>
+      <p class="products-page__subtitle">Cadastro e consulta de produtos e saldos de estoque.</p>
+    </div>
+    <button
+      #newProductButton
+      mat-flat-button
+      color="primary"
+      type="button"
+      (click)="openCreateDialog()"
+    >
+      <mat-icon aria-hidden="true">add</mat-icon>
+      Novo produto
+    </button>
   </header>
 
   <mat-card class="products-page__card">
-    <mat-card-header>
-      <mat-card-title>Cadastrar produto</mat-card-title>
-    </mat-card-header>
     <mat-card-content>
-      <form
-        class="products-page__form"
-        [formGroup]="form"
-        (ngSubmit)="submit()"
-        novalidate
-        aria-label="Formulário de cadastro de produto"
-      >
-        <mat-form-field appearance="outline">
-          <mat-label>Código</mat-label>
-          <input matInput formControlName="code" maxlength="50" required autocomplete="off" />
-          @if (form.controls.code.invalid && form.controls.code.touched) {
-            <mat-error>
-              @if (form.controls.code.hasError('required')) {
-                Informe o código do produto.
-              } @else if (form.controls.code.hasError('duplicate')) {
-                Este código já está cadastrado.
-              } @else if (form.controls.code.hasError('maxlength')) {
-                O código deve ter no máximo 50 caracteres.
-              }
-            </mat-error>
-          }
-        </mat-form-field>
+      <div class="products-page__list-toolbar">
+        <h2 class="products-page__list-title">Produtos cadastrados</h2>
+        <app-page-size-select
+          [pageSize]="pageSize()"
+          [loading]="loading()"
+          (pageSizeChange)="onPageSizeChange($event)"
+        />
+      </div>
 
-        <mat-form-field appearance="outline">
-          <mat-label>Descrição</mat-label>
-          <input
-            matInput
-            formControlName="description"
-            maxlength="200"
-            required
-            autocomplete="off"
+      @if (!loading() && !listError() && products().length > 0) {
+        <div class="products-page__pagination-top">
+          <app-pagination
+            [pageNumber]="pageNumber()"
+            [pageSize]="pageSize()"
+            [totalCount]="totalCount()"
+            [totalPages]="totalPages()"
+            [hasPreviousPage]="hasPreviousPage()"
+            [hasNextPage]="hasNextPage()"
+            [loading]="loading()"
+            (pageChange)="onPageChange($event)"
           />
-          @if (form.controls.description.invalid && form.controls.description.touched) {
-            <mat-error>
-              @if (form.controls.description.hasError('required')) {
-                Informe a descrição do produto.
-              } @else if (form.controls.description.hasError('maxlength')) {
-                A descrição deve ter no máximo 200 caracteres.
-              }
-            </mat-error>
-          }
-        </mat-form-field>
-
-        <mat-form-field appearance="outline">
-          <mat-label>Saldo</mat-label>
-          <input matInput type="number" formControlName="balance" min="0" step="1" required />
-          @if (form.controls.balance.invalid && form.controls.balance.touched) {
-            <mat-error>
-              @if (form.controls.balance.hasError('required')) {
-                Informe o saldo inicial.
-              } @else if (form.controls.balance.hasError('min')) {
-                O saldo não pode ser negativo.
-              } @else if (form.controls.balance.hasError('integer')) {
-                O saldo deve ser um número inteiro.
-              }
-            </mat-error>
-          }
-        </mat-form-field>
-
-        @if (formError()) {
-          <p class="products-page__form-error" role="alert">{{ formError() }}</p>
-        }
-
-        <div class="products-page__form-actions">
-          <button
-            mat-flat-button
-            color="primary"
-            type="submit"
-            [disabled]="submitting()"
-            class="products-page__submit"
-          >
-            @if (submitting()) {
-              <mat-progress-spinner
-                diameter="18"
-                mode="indeterminate"
-                aria-hidden="true"
-              ></mat-progress-spinner>
-              <span>Cadastrando...</span>
-            } @else {
-              <span>Cadastrar produto</span>
-            }
-          </button>
         </div>
-      </form>
-    </mat-card-content>
-  </mat-card>
+      }
 
-  <mat-card class="products-page__card">
-    <mat-card-header>
-      <mat-card-title>Produtos cadastrados</mat-card-title>
-    </mat-card-header>
-    <mat-card-content>
       @if (loading()) {
         <div class="products-page__state" role="status">
           <mat-progress-spinner diameter="32" mode="indeterminate"></mat-progress-spinner>
@@ -118,17 +59,52 @@
           <table class="data-table" aria-label="Lista de produtos cadastrados">
             <thead>
               <tr>
-                <th scope="col">Código</th>
-                <th scope="col">Descrição</th>
-                <th scope="col">Saldo</th>
+                <th scope="col" class="data-table__col-text" [attr.aria-sort]="ariaSortFor('code')">
+                  <button
+                    type="button"
+                    class="data-table__sort-button data-table__sort-button--start"
+                    (click)="changeSort('code')"
+                  >
+                    <span>Código</span>
+                    <span aria-hidden="true">{{ sortIndicator('code') }}</span>
+                  </button>
+                </th>
+                <th
+                  scope="col"
+                  class="data-table__col-text"
+                  [attr.aria-sort]="ariaSortFor('description')"
+                >
+                  <button
+                    type="button"
+                    class="data-table__sort-button data-table__sort-button--start"
+                    (click)="changeSort('description')"
+                  >
+                    <span>Descrição</span>
+                    <span aria-hidden="true">{{ sortIndicator('description') }}</span>
+                  </button>
+                </th>
+                <th
+                  scope="col"
+                  class="data-table__col-numeric"
+                  [attr.aria-sort]="ariaSortFor('balance')"
+                >
+                  <button
+                    type="button"
+                    class="data-table__sort-button data-table__sort-button--end"
+                    (click)="changeSort('balance')"
+                  >
+                    <span>Saldo</span>
+                    <span aria-hidden="true">{{ sortIndicator('balance') }}</span>
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
               @for (product of products(); track product.id) {
                 <tr>
-                  <td class="data-table__mono">{{ product.code }}</td>
-                  <td>{{ product.description }}</td>
-                  <td class="data-table__number">{{ product.balance }}</td>
+                  <td class="data-table__mono data-table__col-text">{{ product.code }}</td>
+                  <td class="data-table__col-text">{{ product.description }}</td>
+                  <td class="data-table__col-numeric">{{ product.balance }}</td>
                 </tr>
               }
             </tbody>

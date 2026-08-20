@@ -40,17 +40,17 @@ public class Product
 
         if (string.IsNullOrEmpty(normalizedCode))
         {
-            errors.Add("Code is required.");
+            errors.Add("O código é obrigatório.");
         }
 
         if (string.IsNullOrEmpty(normalizedDescription))
         {
-            errors.Add("Description is required.");
+            errors.Add("A descrição é obrigatória.");
         }
 
         if (balance < 0)
         {
-            errors.Add("Balance must be greater than or equal to zero.");
+            errors.Add("O saldo deve ser maior ou igual a zero.");
         }
 
         if (errors.Count > 0)

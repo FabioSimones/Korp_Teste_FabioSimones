@@ -28,7 +28,7 @@ public class ProductDomainTests
     {
         // Act & Assert
         var ex = Assert.Throws<ProductValidationException>(() => Product.Create(code, "Widget", 1));
-        Assert.Contains("Code is required.", ex.Errors);
+        Assert.Contains("O código é obrigatório.", ex.Errors);
     }
 
     [Theory]
@@ -39,7 +39,7 @@ public class ProductDomainTests
     {
         // Act & Assert
         var ex = Assert.Throws<ProductValidationException>(() => Product.Create("SKU-001", description, 1));
-        Assert.Contains("Description is required.", ex.Errors);
+        Assert.Contains("A descrição é obrigatória.", ex.Errors);
     }
 
     [Theory]
@@ -49,7 +49,7 @@ public class ProductDomainTests
     {
         // Act & Assert
         var ex = Assert.Throws<ProductValidationException>(() => Product.Create("SKU-001", "Widget", balance));
-        Assert.Contains("Balance must be greater than or equal to zero.", ex.Errors);
+        Assert.Contains("O saldo deve ser maior ou igual a zero.", ex.Errors);
     }
 
     [Fact]
@@ -99,6 +99,9 @@ public class ProductDomainTests
         Assert.Equal(3, ex.AvailableBalance);
         Assert.Equal(4, ex.RequestedQuantity);
         Assert.Equal(3, product.Balance);
+        Assert.Equal(
+            "O produto \"SKU-001\" não possui saldo suficiente. Disponível: 3; solicitado: 4.",
+            ex.Message);
     }
 
     [Theory]

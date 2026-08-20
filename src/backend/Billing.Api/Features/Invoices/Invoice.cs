@@ -68,7 +68,7 @@ public class Invoice
     {
         if (items is null || items.Count == 0)
         {
-            throw new InvoiceValidationException(["At least one item is required."]);
+            throw new InvoiceValidationException(["É necessário informar ao menos um item."]);
         }
 
         return new Invoice(items);

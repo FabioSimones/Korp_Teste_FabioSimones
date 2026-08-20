@@ -20,3 +20,4 @@ Os commits correspondentes a cada task devem ser consultados com `git log --onel
 | 11 | Resiliência e falha obrigatória | Concluída |
 | 12 | Concorrência opcional | Concluída |
 | 13 | Qualidade, documentação e entrega | Concluída |
+| 14 | Usabilidade e navegação de dados (paginação, ordenação e refino de UX) | Em validação |

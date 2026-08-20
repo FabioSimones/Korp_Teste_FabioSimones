@@ -120,11 +120,6 @@
   color: var(--color-ink-secondary);
 }
 
-.invoice-detail-page__print-error {
-  color: var(--color-error);
-  margin: 0 0 16px;
-}
-
 @media (max-width: 599px) {
   .invoice-detail-page__state {
     flex-direction: column;

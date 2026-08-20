@@ -4,7 +4,9 @@
 >
   <div class="invoice-detail-page__header">
     <h1 id="invoice-detail-title">Detalhes da nota</h1>
-    <a mat-stroked-button routerLink="/notas">Voltar para a listagem</a>
+    <a mat-stroked-button routerLink="/notas" [queryParams]="backQueryParams">
+      Voltar para a listagem
+    </a>
   </div>
 
   <mat-card class="invoice-detail-page__card">
@@ -82,10 +84,6 @@
           }
         </div>
 
-        @if (printError()) {
-          <p class="invoice-detail-page__print-error" role="alert">{{ printError() }}</p>
-        }
-
         <h2 class="invoice-detail-page__items-title">Itens</h2>
 
         @if (loadedInvoice.items.length === 0) {
@@ -95,17 +93,17 @@
             <table class="data-table" aria-label="Itens da nota">
               <thead>
                 <tr>
-                  <th scope="col">Código</th>
-                  <th scope="col">Descrição</th>
-                  <th scope="col">Quantidade</th>
+                  <th scope="col" class="data-table__col-text">Código</th>
+                  <th scope="col" class="data-table__col-text">Descrição</th>
+                  <th scope="col" class="data-table__col-numeric">Quantidade</th>
                 </tr>
               </thead>
               <tbody>
                 @for (item of loadedInvoice.items; track item.id) {
                   <tr>
-                    <td class="data-table__mono">{{ item.productCode }}</td>
-                    <td>{{ item.productDescription }}</td>
-                    <td class="data-table__number">{{ item.quantity }}</td>
+                    <td class="data-table__mono data-table__col-text">{{ item.productCode }}</td>
+                    <td class="data-table__col-text">{{ item.productDescription }}</td>
+                    <td class="data-table__col-numeric">{{ item.quantity }}</td>
                   </tr>
                 }
               </tbody>

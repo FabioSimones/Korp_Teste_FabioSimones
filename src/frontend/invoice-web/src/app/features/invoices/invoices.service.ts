@@ -1,10 +1,12 @@
-import { HttpClient, HttpContext } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import { SKIP_ERROR_NOTIFICATION } from '../../core/interceptors/skip-error-notification.token';
-import { CreateInvoiceRequest, Invoice } from './models/invoice';
+import { PagedResponse } from '../../shared/pagination/paged-response';
+import { SortDirection } from '../../shared/pagination/sort';
+import { CreateInvoiceRequest, Invoice, InvoiceSortField, InvoiceSummary } from './models/invoice';
 
 /**
  * Typed HTTP client for the Billing.Api invoices endpoints. Keeps the
@@ -23,6 +25,24 @@ export class InvoicesService {
 
   getAll(): Observable<Invoice[]> {
     return this.http.get<Invoice[]>(this.baseUrl, { context: this.context });
+  }
+
+  /** Server-side paginated listing, used exclusively by `InvoicesListPage`. */
+  getPaged(
+    pageNumber: number,
+    pageSize: number,
+    sortBy: InvoiceSortField,
+    sortDirection: SortDirection,
+  ): Observable<PagedResponse<InvoiceSummary>> {
+    const params = new HttpParams()
+      .set('pageNumber', pageNumber)
+      .set('pageSize', pageSize)
+      .set('sortBy', sortBy)
+      .set('sortDirection', sortDirection);
+    return this.http.get<PagedResponse<InvoiceSummary>>(`${this.baseUrl}/paged`, {
+      context: this.context,
+      params,
+    });
   }
 
   getById(id: number): Observable<Invoice> {

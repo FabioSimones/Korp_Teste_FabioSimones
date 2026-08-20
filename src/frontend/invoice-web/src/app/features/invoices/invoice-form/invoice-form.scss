@@ -1,0 +1,175 @@
+.invoice-form {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.invoice-form--dialog {
+  min-width: 0;
+}
+
+.invoice-form__dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 4px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.invoice-form__dialog-title {
+  margin: 0;
+}
+
+.invoice-form__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.invoice-form__body--dialog {
+  padding: 16px 20px;
+}
+
+.invoice-form__state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.invoice-form__empty {
+  padding: 8px 0;
+  color: var(--color-ink-secondary);
+}
+
+.invoice-form__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.invoice-form__items-title {
+  margin: 8px 0 0;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-ink-secondary);
+}
+
+.invoice-form__items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.invoice-form__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-app);
+}
+
+.invoice-form__item-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  margin-top: 16px;
+  border-radius: 3px;
+  background: var(--color-action-tint);
+  color: var(--color-action-strong);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.invoice-form__item-product {
+  flex: 2 1 280px;
+}
+
+.invoice-form__item-quantity {
+  flex: 1 1 140px;
+}
+
+.invoice-form__item-balance {
+  padding-top: 18px;
+  font-size: 0.85rem;
+  color: var(--color-ink-secondary);
+  min-width: 140px;
+}
+
+.invoice-form__add-item {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 8px;
+}
+
+.invoice-form__form-error {
+  color: var(--color-error);
+  margin: 0 0 8px;
+}
+
+.invoice-form__form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+// Sticky footer inside the dialog's scrollable content area, so "Cancelar"
+// and "Criar nota" stay visible while the item list scrolls.
+.invoice-form--dialog .invoice-form__form-actions {
+  position: sticky;
+  bottom: 0;
+  margin: 16px -20px -16px;
+  padding: 12px 20px;
+  background: var(--color-bg-paper);
+  border-top: 1px solid var(--color-border);
+}
+
+.invoice-form__submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 599px) {
+  .invoice-form__state {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .invoice-form__item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  // `flex-basis` on the fields below (280px / 140px) is sized for the
+  // row layout used above this breakpoint. Once the container switches to
+  // `flex-direction: column`, the main axis becomes vertical, so that same
+  // basis would otherwise be applied to height instead of width, stretching
+  // each field far taller than intended. Reset it to auto here so children
+  // just take their natural height and only stretch in width (cross axis).
+  .invoice-form__item-product,
+  .invoice-form__item-quantity {
+    flex-basis: auto;
+  }
+
+  .invoice-form--dialog .invoice-form__form-actions {
+    flex-direction: column-reverse;
+    margin: 16px -16px -16px;
+    padding: 12px 16px;
+  }
+
+  .invoice-form__body--dialog {
+    padding: 12px 16px;
+  }
+
+  .invoice-form--dialog .invoice-form__form-actions button {
+    width: 100%;
+  }
+}

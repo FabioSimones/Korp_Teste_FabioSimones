@@ -8,6 +8,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { finalize } from 'rxjs';
 
+import { getUserFriendlyErrorMessage } from '../../../core/utils/http-error-messages';
 import { NotificationService } from '../../../core/services/notification.service';
 import { InvoicePrintView } from '../invoice-print-view/invoice-print-view';
 import { InvoiceStatusBadge } from '../invoice-status-badge/invoice-status-badge';
@@ -45,8 +46,20 @@ export class InvoiceDetailPage {
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
 
+  /**
+   * The listing's `page`/`pageSize`/`sortBy`/`sortDirection`, as passed by
+   * `InvoicesListPage.openInvoice` via router navigation `state` (not the
+   * URL), so "Voltar para a listagem" restores the exact page/sort the user
+   * came from instead of resetting to the defaults. Falls back to `{}`
+   * (defaults) when arriving here any other way — a direct link, a page
+   * refresh, or a bookmark — none of which break: `/notas` on its own
+   * already normalizes to the default page/size/sort.
+   */
+  protected readonly backQueryParams: Record<string, string> =
+    (history.state as { listQueryParams?: Record<string, string> } | undefined)?.listQueryParams ??
+    {};
+
   protected readonly printing = signal(false);
-  protected readonly printError = signal<string | null>(null);
 
   /** The print action is only available while the invoice is still `Open`. */
   protected readonly canPrint = computed(() => this.invoice()?.status === 'Open');
@@ -72,7 +85,6 @@ export class InvoiceDetailPage {
       return;
     }
 
-    this.printError.set(null);
     this.printing.set(true);
 
     this.invoicesService
@@ -89,32 +101,26 @@ export class InvoiceDetailPage {
 
   private handlePrintSuccess(invoice: Invoice): void {
     this.invoice.set(invoice);
-    this.notification.success(`Nota Nº ${invoice.number} fechada com sucesso.`);
+    // `window.print()` only runs after the backend has confirmed the
+    // print/close (this callback only fires on HTTP success), so the
+    // printable view never opens for a request that is still in flight or
+    // that failed.
+    this.notification.success(`Nota Nº ${invoice.number} impressa e fechada com sucesso.`);
     window.print();
   }
 
+  /**
+   * Resolves a single, user-facing message via `getUserFriendlyErrorMessage`
+   * and shows it as a toast — the only feedback for this failure.
+   * `InvoicesService` skips the interceptor's own notification for every
+   * request, so this is the *only* toast shown. The invoice itself is left
+   * untouched (still `Open`, still fully rendered) so the user can retry
+   * once stock is replenished; the irreversibility notice above the button
+   * already covers what printing does, so no separate inline error text is
+   * needed here.
+   */
   private handlePrintError(error: HttpErrorResponse): void {
-    if (error.status === 404) {
-      this.printError.set('Nota não encontrada.');
-      return;
-    }
-
-    if (error.status === 409) {
-      this.printError.set(
-        error.error?.detail ??
-          'Não foi possível fechar a nota: ela já está fechada ou o saldo em estoque é insuficiente.',
-      );
-      return;
-    }
-
-    if (error.status === 0 || error.status === 503) {
-      this.printError.set(
-        'Serviço de estoque indisponível no momento. Tente novamente em instantes.',
-      );
-      return;
-    }
-
-    this.printError.set('Não foi possível imprimir a nota. Tente novamente.');
+    this.notification.error(getUserFriendlyErrorMessage(error, 'invoice-print'));
   }
 
   private loadInvoice(): void {
@@ -140,18 +146,6 @@ export class InvoiceDetailPage {
   }
 
   private handleLoadError(error: HttpErrorResponse): void {
-    if (error.status === 404) {
-      this.loadError.set('Nota não encontrada.');
-      return;
-    }
-
-    if (error.status === 0 || error.status === 503) {
-      this.loadError.set(
-        'Serviço de faturamento indisponível no momento. Tente novamente em instantes.',
-      );
-      return;
-    }
-
-    this.loadError.set('Não foi possível carregar a nota. Tente novamente.');
+    this.loadError.set(getUserFriendlyErrorMessage(error, 'invoice-detail'));
   }
 }

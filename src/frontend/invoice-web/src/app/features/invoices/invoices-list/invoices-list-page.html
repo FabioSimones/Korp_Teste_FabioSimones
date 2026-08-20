@@ -4,14 +4,44 @@
       <h1 id="invoices-title">Notas fiscais</h1>
       <p class="invoices-list-page__subtitle">Emissão e impressão de notas</p>
     </div>
-    <a mat-flat-button color="primary" routerLink="/notas/nova">
+    <button
+      #newInvoiceButton
+      mat-flat-button
+      color="primary"
+      type="button"
+      (click)="openCreateDialog()"
+    >
       <mat-icon aria-hidden="true">add</mat-icon>
       Nova nota fiscal
-    </a>
+    </button>
   </div>
 
   <mat-card class="invoices-list-page__card">
     <mat-card-content>
+      <div class="invoices-list-page__list-toolbar">
+        <h2 class="invoices-list-page__list-title">Notas cadastradas</h2>
+        <app-page-size-select
+          [pageSize]="pageSize()"
+          [loading]="loading()"
+          (pageSizeChange)="onPageSizeChange($event)"
+        />
+      </div>
+
+      @if (!loading() && !listError() && invoices().length > 0) {
+        <div class="invoices-list-page__pagination-top">
+          <app-pagination
+            [pageNumber]="pageNumber()"
+            [pageSize]="pageSize()"
+            [totalCount]="totalCount()"
+            [totalPages]="totalPages()"
+            [hasPreviousPage]="hasPreviousPage()"
+            [hasNextPage]="hasNextPage()"
+            [loading]="loading()"
+            (pageChange)="onPageChange($event)"
+          />
+        </div>
+      }
+
       @if (loading()) {
         <div class="invoices-list-page__state" role="status">
           <mat-progress-spinner diameter="32" mode="indeterminate"></mat-progress-spinner>
@@ -29,10 +59,62 @@
           <table class="data-table data-table--clickable" aria-label="Lista de notas cadastradas">
             <thead>
               <tr>
-                <th scope="col">Número</th>
-                <th scope="col">Emissão</th>
-                <th scope="col">Itens</th>
-                <th scope="col">Status</th>
+                <th
+                  scope="col"
+                  class="data-table__col-text"
+                  [attr.aria-sort]="ariaSortFor('number')"
+                >
+                  <button
+                    type="button"
+                    class="data-table__sort-button data-table__sort-button--start"
+                    (click)="changeSort('number')"
+                  >
+                    <span>Número</span>
+                    <span aria-hidden="true">{{ sortIndicator('number') }}</span>
+                  </button>
+                </th>
+                <th
+                  scope="col"
+                  class="data-table__col-text"
+                  [attr.aria-sort]="ariaSortFor('createdAtUtc')"
+                >
+                  <button
+                    type="button"
+                    class="data-table__sort-button data-table__sort-button--start"
+                    (click)="changeSort('createdAtUtc')"
+                  >
+                    <span>Emissão</span>
+                    <span aria-hidden="true">{{ sortIndicator('createdAtUtc') }}</span>
+                  </button>
+                </th>
+                <th
+                  scope="col"
+                  class="data-table__col-numeric"
+                  [attr.aria-sort]="ariaSortFor('itemsCount')"
+                >
+                  <button
+                    type="button"
+                    class="data-table__sort-button data-table__sort-button--end"
+                    (click)="changeSort('itemsCount')"
+                  >
+                    <span>Itens</span>
+                    <span aria-hidden="true">{{ sortIndicator('itemsCount') }}</span>
+                  </button>
+                </th>
+                <th
+                  scope="col"
+                  class="data-table__col-status"
+                  [attr.aria-sort]="ariaSortFor('status')"
+                >
+                  <button
+                    type="button"
+                    class="data-table__sort-button data-table__sort-button--center"
+                    (click)="changeSort('status')"
+                  >
+                    <span>Status</span>
+                    <span aria-hidden="true">{{ sortIndicator('status') }}</span>
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -44,10 +126,14 @@
                   (click)="openInvoice(invoice.id)"
                   (keydown)="onRowKeydown($event, invoice.id)"
                 >
-                  <td class="data-table__mono">{{ invoice.number }}</td>
-                  <td>{{ invoice.createdAtUtc | date: 'dd/MM/yyyy HH:mm' }}</td>
-                  <td class="data-table__number">{{ invoice.items.length }}</td>
-                  <td><app-invoice-status-badge [status]="invoice.status" /></td>
+                  <td class="data-table__mono data-table__col-text">{{ invoice.number }}</td>
+                  <td class="data-table__col-text">
+                    {{ invoice.createdAtUtc | date: 'dd/MM/yyyy HH:mm' }}
+                  </td>
+                  <td class="data-table__col-numeric">{{ invoice.itemsCount }}</td>
+                  <td class="data-table__col-status">
+                    <app-invoice-status-badge [status]="invoice.status" />
+                  </td>
                 </tr>
               }
             </tbody>

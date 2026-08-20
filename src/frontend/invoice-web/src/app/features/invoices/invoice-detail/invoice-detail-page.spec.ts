@@ -99,6 +99,27 @@ describe('InvoiceDetailPage', () => {
     expect(fixture.nativeElement.textContent).toContain('2');
   });
 
+  it('should align the Quantidade header and its values on the same (numeric) column class', () => {
+    setup();
+
+    const headerCells: HTMLTableCellElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.invoice-detail-page__table-wrapper thead th'),
+    );
+    const quantidadeHeader = headerCells.find((th) => th.textContent?.trim() === 'Quantidade')!;
+    expect(quantidadeHeader.classList).toContain('data-table__col-numeric');
+
+    const quantidadeCells: HTMLTableCellElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        '.invoice-detail-page__table-wrapper tbody td.data-table__col-numeric',
+      ),
+    );
+    expect(quantidadeCells.length).toBe(2);
+    quantidadeCells.forEach((cell) => expect(cell.classList).toContain('data-table__col-numeric'));
+
+    const codigoHeader = headerCells.find((th) => th.textContent?.trim() === 'Código')!;
+    expect(codigoHeader.classList).toContain('data-table__col-text');
+  });
+
   it('should show the irreversible stock debit notice only while the invoice is open', () => {
     setup(of(openInvoice));
 
@@ -115,11 +136,22 @@ describe('InvoiceDetailPage', () => {
     expect(fixture.nativeElement.querySelector('.invoice-detail-page__notice')).toBeFalsy();
   });
 
-  it('should show a not-found message on 404', () => {
+  it('should show a not-found message on 404 (no errorCode)', () => {
     setup(throwError(() => new HttpErrorResponse({ status: 404 })));
 
     const alert = fixture.nativeElement.querySelector('[role="alert"]');
-    expect(alert?.textContent).toContain('Nota não encontrada');
+    expect(alert?.textContent).toContain('não foi encontrado');
+  });
+
+  it('should show the INVOICE_NOT_FOUND errorCode message on 404', () => {
+    setup(
+      throwError(
+        () => new HttpErrorResponse({ status: 404, error: { errorCode: 'INVOICE_NOT_FOUND' } }),
+      ),
+    );
+
+    const alert = fixture.nativeElement.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain('Nota não encontrada.');
   });
 
   it('should show an unavailable-service message when the API cannot be reached', () => {
@@ -177,7 +209,7 @@ describe('InvoiceDetailPage', () => {
     expect(fixture.nativeElement.textContent).toContain('Fechada');
   });
 
-  it('should call the print endpoint exactly once, update the status and trigger window.print on success', () => {
+  it('should call the print endpoint exactly once, update the status and trigger window.print only after the HTTP success', () => {
     setup(of(openInvoice), of(closedInvoice));
 
     printButton().click();
@@ -186,8 +218,15 @@ describe('InvoiceDetailPage', () => {
     expect(invoicesService.print).toHaveBeenCalledTimes(1);
     expect(invoicesService.print).toHaveBeenCalledWith(5);
     expect(fixture.nativeElement.textContent).toContain('Fechada');
-    expect(notification.success).toHaveBeenCalled();
+    expect(notification.success).toHaveBeenCalledTimes(1);
+    expect(notification.success).toHaveBeenCalledWith('Nota Nº 42 impressa e fechada com sucesso.');
+    expect(notification.error).not.toHaveBeenCalled();
     expect(printSpy).toHaveBeenCalledTimes(1);
+    // window.print() must only fire after the toast confirms the backend
+    // has already closed the invoice, never speculatively before it.
+    expect(printSpy.mock.invocationCallOrder[0]).toBeGreaterThan(
+      notification.success.mock.invocationCallOrder[0],
+    );
   });
 
   it('should not trigger a second HTTP call when the button is clicked again while a request is in flight', () => {
@@ -203,7 +242,7 @@ describe('InvoiceDetailPage', () => {
     expect(invoicesService.print).toHaveBeenCalledTimes(1);
   });
 
-  it('should show a friendly message on 409 (already closed or insufficient balance)', () => {
+  it('should show exactly one toast on a 409 without a recognized errorCode, no inline duplicate, keeping the invoice open', () => {
     setup(
       of(openInvoice),
       throwError(() => new HttpErrorResponse({ status: 409 })),
@@ -212,12 +251,67 @@ describe('InvoiceDetailPage', () => {
     printButton().click();
     fixture.detectChanges();
 
-    const alert = fixture.nativeElement.querySelector('.invoice-detail-page__print-error');
-    expect(alert?.textContent).toContain('fechada');
+    expect(notification.error).toHaveBeenCalledTimes(1);
+    expect(notification.error).toHaveBeenCalledWith(
+      expect.stringContaining('Não foi possível concluir a impressão'),
+    );
+    expect(fixture.nativeElement.querySelector('.invoice-detail-page__print-error')).toBeFalsy();
     expect(printSpy).not.toHaveBeenCalled();
+    // The invoice is still rendered as Open: the frontend never flips
+    // status locally on a failed print, only Billing.Api's response does.
+    expect(fixture.nativeElement.textContent).toContain('Aberta');
+    // The irreversibility notice stays visible — it is not the removed
+    // transient print-error text, and printing is still retryable.
+    expect(fixture.nativeElement.querySelector('.invoice-detail-page__notice')).toBeTruthy();
   });
 
-  it('should show a friendly message on 404 when printing', () => {
+  it('should show exactly one toast with the backend-provided insufficient-stock detail, no inline duplicate, keeping the invoice open', () => {
+    setup(
+      of(openInvoice),
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 409,
+            error: {
+              errorCode: 'INSUFFICIENT_STOCK',
+              detail: 'O produto "A1" não possui saldo suficiente. Disponível: 2; solicitado: 3.',
+            },
+          }),
+      ),
+    );
+
+    printButton().click();
+    fixture.detectChanges();
+
+    expect(notification.error).toHaveBeenCalledTimes(1);
+    expect(notification.error).toHaveBeenCalledWith(
+      'O produto "A1" não possui saldo suficiente. Disponível: 2; solicitado: 3.',
+    );
+    expect(fixture.nativeElement.querySelector('.invoice-detail-page__print-error')).toBeFalsy();
+    expect(printSpy).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('Aberta');
+  });
+
+  it('should show the INVOICE_ALREADY_CLOSED toast message when printing an already-closed invoice', () => {
+    setup(
+      of(openInvoice),
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 409,
+            error: { errorCode: 'INVOICE_ALREADY_CLOSED' },
+          }),
+      ),
+    );
+
+    printButton().click();
+    fixture.detectChanges();
+
+    expect(notification.error).toHaveBeenCalledTimes(1);
+    expect(notification.error).toHaveBeenCalledWith(expect.stringContaining('já foi fechada'));
+  });
+
+  it('should show a friendly toast on 404 when printing, with no inline duplicate', () => {
     setup(
       of(openInvoice),
       throwError(() => new HttpErrorResponse({ status: 404 })),
@@ -226,11 +320,12 @@ describe('InvoiceDetailPage', () => {
     printButton().click();
     fixture.detectChanges();
 
-    const alert = fixture.nativeElement.querySelector('.invoice-detail-page__print-error');
-    expect(alert?.textContent).toContain('Nota não encontrada');
+    expect(notification.error).toHaveBeenCalledTimes(1);
+    expect(notification.error).toHaveBeenCalledWith(expect.stringContaining('não foi encontrado'));
+    expect(fixture.nativeElement.querySelector('.invoice-detail-page__print-error')).toBeFalsy();
   });
 
-  it('should show a friendly message on 503 (Inventory unavailable)', () => {
+  it('should show a friendly, Portuguese-only toast on 503 (Inventory unavailable), with no inline duplicate', () => {
     setup(
       of(openInvoice),
       throwError(() => new HttpErrorResponse({ status: 503 })),
@@ -239,8 +334,11 @@ describe('InvoiceDetailPage', () => {
     printButton().click();
     fixture.detectChanges();
 
-    const alert = fixture.nativeElement.querySelector('.invoice-detail-page__print-error');
-    expect(alert?.textContent).toContain('indisponível');
+    expect(notification.error).toHaveBeenCalledTimes(1);
+    const message = notification.error.mock.calls[0][0] as string;
+    expect(message).toContain('indisponível');
+    expect(message).not.toMatch(/Http failure|\[object Object\]/);
+    expect(fixture.nativeElement.querySelector('.invoice-detail-page__print-error')).toBeFalsy();
   });
 
   it('should re-enable the button after a failed print attempt', () => {
@@ -253,5 +351,43 @@ describe('InvoiceDetailPage', () => {
     fixture.detectChanges();
 
     expect(printButton().disabled).toBe(false);
+  });
+
+  describe('"Voltar para a listagem" link', () => {
+    function backLink(): HTMLAnchorElement {
+      return fixture.nativeElement.querySelector('.invoice-detail-page__header a');
+    }
+
+    it('should point back to the listing without extra query params when arriving directly (no router state)', () => {
+      setup();
+
+      expect(backLink().getAttribute('href')).toBe('/notas');
+    });
+
+    it('should preserve the listing page/pageSize/sortBy/sortDirection carried over as router navigation state', () => {
+      history.replaceState(
+        {
+          listQueryParams: {
+            page: '2',
+            pageSize: '10',
+            sortBy: 'createdAtUtc',
+            sortDirection: 'asc',
+          },
+        },
+        '',
+      );
+
+      setup();
+
+      const href = backLink().getAttribute('href')!;
+      expect(href).toContain('/notas?');
+      expect(href).toContain('page=2');
+      expect(href).toContain('pageSize=10');
+      expect(href).toContain('sortBy=createdAtUtc');
+      expect(href).toContain('sortDirection=asc');
+
+      // Reset to avoid leaking history state into other test files.
+      history.replaceState({}, '');
+    });
   });
 });

@@ -1,3 +1,4 @@
+using Billing.Api.Common;
 using Billing.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -8,6 +9,10 @@ namespace Billing.Api.Features.Invoices;
 public class InvoiceService : IInvoiceService
 {
     private const string UniqueViolationSqlState = "23505";
+    private const int MinPageSize = 1;
+    private const int MaxPageSize = 100;
+    private const string DefaultSortBy = "number";
+    private const string DefaultSortDirection = "desc";
 
     private readonly BillingDbContext _dbContext;
     private readonly IInventoryProductClient _inventoryClient;
@@ -31,7 +36,7 @@ public class InvoiceService : IInvoiceService
 
         var quantityErrors = itemRequests
             .Where(i => i.Quantity <= 0)
-            .Select(i => $"Quantity for product '{i.ProductId}' must be a positive integer.")
+            .Select(i => $"A quantidade do produto '{i.ProductId}' deve ser um número inteiro maior que zero.")
             .ToList();
 
         if (quantityErrors.Count > 0)
@@ -153,6 +158,85 @@ public class InvoiceService : IInvoiceService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return ToResponse(invoice);
+    }
+
+    public async Task<PagedResponse<InvoiceSummaryResponse>> GetPagedAsync(InvoicesPageQuery query, CancellationToken cancellationToken)
+    {
+        var errors = new List<string>();
+
+        if (query.PageNumber < 1)
+        {
+            errors.Add("O número da página deve ser maior ou igual a 1.");
+        }
+
+        if (query.PageSize < MinPageSize || query.PageSize > MaxPageSize)
+        {
+            errors.Add($"O tamanho da página deve estar entre {MinPageSize} e {MaxPageSize}.");
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new InvalidPaginationException(errors);
+        }
+
+        var sortBy = (query.SortBy ?? DefaultSortBy).Trim().ToLowerInvariant();
+        var sortDirection = (query.SortDirection ?? DefaultSortDirection).Trim().ToLowerInvariant();
+
+        var sortErrors = new List<string>();
+
+        if (sortBy is not ("number" or "createdatutc" or "itemscount" or "status"))
+        {
+            sortErrors.Add("O campo de ordenação informado não é válido.");
+        }
+
+        if (sortDirection is not ("asc" or "desc"))
+        {
+            sortErrors.Add("A direção de ordenação deve ser 'asc' ou 'desc'.");
+        }
+
+        if (sortErrors.Count > 0)
+        {
+            throw new InvalidSortException(sortErrors);
+        }
+
+        var ascending = sortDirection == "asc";
+
+        // Read-only query against Billing's own database; never calls Inventory.
+        var totalCount = await _dbContext.Invoices
+            .AsNoTracking()
+            .CountAsync(cancellationToken);
+
+        // itemsCount is translated by EF Core into a SQL scalar subquery
+        // (SELECT COUNT(*) FROM invoice_items WHERE invoice_id = i.id) via
+        // the Items navigation, so ordering by it never materializes the
+        // item collections in memory or issues per-invoice queries (N+1).
+        IQueryable<Invoice> orderedQuery = (sortBy, ascending) switch
+        {
+            ("number", true) => _dbContext.Invoices.AsNoTracking().OrderBy(i => i.Number).ThenBy(i => i.Id),
+            ("number", false) => _dbContext.Invoices.AsNoTracking().OrderByDescending(i => i.Number).ThenByDescending(i => i.Id),
+            ("createdatutc", true) => _dbContext.Invoices.AsNoTracking().OrderBy(i => i.CreatedAtUtc).ThenBy(i => i.Id),
+            ("createdatutc", false) => _dbContext.Invoices.AsNoTracking().OrderByDescending(i => i.CreatedAtUtc).ThenByDescending(i => i.Id),
+            ("itemscount", true) => _dbContext.Invoices.AsNoTracking().OrderBy(i => i.Items.Count).ThenBy(i => i.Id),
+            ("itemscount", false) => _dbContext.Invoices.AsNoTracking().OrderByDescending(i => i.Items.Count).ThenByDescending(i => i.Id),
+            ("status", true) => _dbContext.Invoices.AsNoTracking().OrderBy(i => i.Status).ThenBy(i => i.Id),
+            ("status", false) => _dbContext.Invoices.AsNoTracking().OrderByDescending(i => i.Status).ThenByDescending(i => i.Id),
+            // Unreachable: sortBy/ascending were already validated above.
+            _ => throw new InvalidSortException(["O campo de ordenação informado não é válido."]),
+        };
+
+        var items = await orderedQuery
+            .Skip((query.PageNumber - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .Select(i => new InvoiceSummaryResponse(
+                i.Id,
+                i.Number,
+                i.Status.ToString(),
+                i.CreatedAtUtc,
+                i.ClosedAtUtc,
+                i.Items.Count))
+            .ToListAsync(cancellationToken);
+
+        return PagedResponse<InvoiceSummaryResponse>.Create(items, query.PageNumber, query.PageSize, totalCount);
     }
 
     private static InvoiceResponse ToResponse(Invoice invoice) =>

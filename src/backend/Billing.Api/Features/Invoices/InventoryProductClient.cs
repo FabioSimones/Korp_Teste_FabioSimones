@@ -49,26 +49,28 @@ public class InventoryProductClient : IInventoryProductClient
         }
         catch (HttpRequestException ex)
         {
-            throw new InventoryServiceUnavailableException("The Inventory service is unavailable.", ex);
+            throw new InventoryServiceUnavailableException("Não foi possível consultar o serviço de estoque.", ex);
         }
         catch (TimeoutRejectedException ex)
         {
             // The resilience pipeline's total or per-attempt timeout tripped
             // (Task 11), distinct from the caller cancelling the request.
-            throw new InventoryServiceUnavailableException("The Inventory service request timed out.", ex);
+            throw new InventoryServiceUnavailableException(
+                "O serviço de estoque demorou mais que o esperado para responder.", ex, InventoryUnavailableReason.Timeout);
         }
         catch (BrokenCircuitException ex)
         {
             // The circuit breaker is open and short-circuited the call
             // before reaching Inventory.Api (Task 11).
-            throw new InventoryServiceUnavailableException("The Inventory service circuit breaker is open.", ex);
+            throw new InventoryServiceUnavailableException("Não foi possível consultar o serviço de estoque.", ex);
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             // HttpClient.Timeout safety-net elapsed; should not normally
             // trigger since it sits well above the pipeline's own total
             // timeout (see Program.cs).
-            throw new InventoryServiceUnavailableException("The Inventory service request timed out.", ex);
+            throw new InventoryServiceUnavailableException(
+                "O serviço de estoque demorou mais que o esperado para responder.", ex, InventoryUnavailableReason.Timeout);
         }
 
         using (response)
@@ -80,8 +82,7 @@ public class InventoryProductClient : IInventoryProductClient
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new InventoryServiceUnavailableException(
-                    $"The Inventory service responded with unexpected status {(int)response.StatusCode}.");
+                throw new InventoryServiceUnavailableException("Não foi possível consultar o serviço de estoque.");
             }
 
             InventoryProductPayload? product;
@@ -91,12 +92,12 @@ public class InventoryProductClient : IInventoryProductClient
             }
             catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
             {
-                throw new InventoryServiceUnavailableException("The Inventory service returned an invalid response.", ex);
+                throw new InventoryServiceUnavailableException("Não foi possível consultar o serviço de estoque.", ex);
             }
 
             if (product is null)
             {
-                throw new InventoryServiceUnavailableException("The Inventory service returned an empty response.");
+                throw new InventoryServiceUnavailableException("Não foi possível consultar o serviço de estoque.");
             }
 
             return new InventoryProductLookupResult(product.Id, product.Code, product.Description);

@@ -72,6 +72,15 @@ public class InvoicesInventoryUnavailableApiTests : IAsyncLifetime
 
         // Assert
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.True(problem.TryGetProperty("traceId", out var traceId));
+        Assert.False(string.IsNullOrWhiteSpace(traceId.GetString()));
+        Assert.True(problem.TryGetProperty("errorCode", out var errorCode));
+        Assert.Equal("INVENTORY_UNAVAILABLE", errorCode.GetString());
+        Assert.True(problem.TryGetProperty("detail", out var detail));
+        Assert.False(detail.GetString()!.Contains("Exception", StringComparison.OrdinalIgnoreCase));
+        Assert.False(problem.ToString().Contains("StackTrace", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

@@ -145,9 +145,37 @@ h3 {
   font-family: var(--font-mono);
 }
 
-.data-table__number {
+// Column alignment modifiers. Applied to *both* the `<th>` (header cell)
+// and the `<td>` (value cell) of a column so the header, the sort button
+// inside it, and every rendered value share the same visual axis — that is
+// the actual fix for the header/value misalignment these classes exist to
+// prevent. Kept as standalone selectors (instead of relying on `nth-child`)
+// so column order can change without silently breaking the alignment.
+//
+// - `--text`: left-aligned (code, description, dates, ...).
+// - `--numeric`: right-aligned with tabular figures so digits line up
+//   (balances, quantities, item counts).
+// - `--status`: centered, so a status badge sits centered in its column
+//   rather than merely having its own text centered.
+.data-table__col-text {
+  text-align: left;
+}
+
+.data-table thead th.data-table__col-numeric,
+.data-table tbody td.data-table__col-numeric {
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+// Numeric values keep the same monospace treatment codes already had, so
+// digits (and their column) line up cleanly.
+.data-table tbody td.data-table__col-numeric {
   font-family: var(--font-mono);
+}
+
+.data-table thead th.data-table__col-status,
+.data-table tbody td.data-table__col-status {
+  text-align: center;
 }
 
 .data-table--clickable tbody tr {
@@ -157,6 +185,114 @@ h3 {
 .data-table--clickable tbody tr:focus-visible {
   outline: 2px solid var(--color-action);
   outline-offset: -2px;
+}
+
+// Sortable column header button: reset to look like plain header text, but
+// keep it a real <button> for native keyboard (Enter/Space) and screen
+// reader semantics. The sort direction is conveyed both by `aria-sort` on
+// the parent <th> and, visually, by the ▲/▼ glyph (never by color alone).
+// The button always spans the full header cell width so its own alignment
+// (via the `--start` / `--end` / `--center` modifiers below) — not the
+// button's intrinsic content width — determines where the label and arrow
+// sit, keeping them on the same axis as the column's values.
+.data-table__sort-button {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  padding: 4px 2px;
+  margin: -4px -2px;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.data-table__sort-button--start {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.data-table__sort-button--end {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.data-table__sort-button--center {
+  justify-content: center;
+  text-align: center;
+}
+
+.data-table__sort-button:hover {
+  color: var(--color-ink);
+}
+
+.data-table__sort-button:focus-visible {
+  outline: 2px solid var(--color-action);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+// ---------------------------------------------------------------------------
+// NotificationService toasts ("Folha de Trabalho" feedback pattern).
+//
+// Colors use the official Material snack-bar token override API
+// (`--mat-snack-bar-*` custom properties), not `::ng-deep`: the snack bar
+// container (`.mat-mdc-snack-bar-container`) is rendered by the CDK overlay
+// directly under <body>, outside every component's view, so it is already
+// reachable from this global stylesheet without piercing encapsulation.
+// `panelClass` (set by NotificationService) is what lets each notification
+// kind pick its own color set here.
+// ---------------------------------------------------------------------------
+.mat-mdc-snack-bar-container {
+  &.notification-success {
+    --mat-snack-bar-container-color: var(--color-success-bg);
+    --mat-snack-bar-supporting-text-color: var(--color-success);
+    --mat-snack-bar-button-color: var(--color-success);
+  }
+
+  &.notification-error {
+    --mat-snack-bar-container-color: var(--color-error-bg);
+    --mat-snack-bar-supporting-text-color: var(--color-error);
+    --mat-snack-bar-button-color: var(--color-error);
+  }
+
+  &.notification-warning {
+    --mat-snack-bar-container-color: var(--color-warning-bg);
+    --mat-snack-bar-supporting-text-color: var(--color-warning);
+    --mat-snack-bar-button-color: var(--color-warning);
+  }
+
+  &.notification-info {
+    --mat-snack-bar-container-color: var(--color-action-tint);
+    --mat-snack-bar-supporting-text-color: var(--color-action-strong);
+    --mat-snack-bar-button-color: var(--color-action-strong);
+  }
+
+  &.notification-success,
+  &.notification-error,
+  &.notification-warning,
+  &.notification-info {
+    // Thin border instead of Material's default shadow-only surface, to
+    // match the sober "Folha de Trabalho" direction and keep contrast
+    // legible without relying on background color alone.
+    .mat-mdc-snackbar-surface {
+      border: 1px solid currentColor;
+      box-shadow: none;
+    }
+  }
+}
+
+// Keeps the (already handset-triggered) full-width mobile snack bar
+// anchored just below the top edge instead of touching it, without
+// overlapping the app shell's top navigation bar.
+@media (max-width: 599.98px) {
+  .mat-mdc-snack-bar-container {
+    margin-top: 8px;
+  }
 }
 
 /* You can add global styles to this file, and also import other style files */

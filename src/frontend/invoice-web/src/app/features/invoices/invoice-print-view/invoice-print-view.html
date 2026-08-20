@@ -20,17 +20,17 @@
   <table class="invoice-print-view__table">
     <thead>
       <tr>
-        <th>Código</th>
-        <th>Descrição</th>
-        <th>Quantidade</th>
+        <th class="invoice-print-view__col-text">Código</th>
+        <th class="invoice-print-view__col-text">Descrição</th>
+        <th class="invoice-print-view__col-numeric">Quantidade</th>
       </tr>
     </thead>
     <tbody>
       @for (item of invoice.items; track item.id) {
         <tr>
-          <td>{{ item.productCode }}</td>
-          <td>{{ item.productDescription }}</td>
-          <td>{{ item.quantity }}</td>
+          <td class="invoice-print-view__col-text">{{ item.productCode }}</td>
+          <td class="invoice-print-view__col-text">{{ item.productDescription }}</td>
+          <td class="invoice-print-view__col-numeric">{{ item.quantity }}</td>
         </tr>
       }
     </tbody>
