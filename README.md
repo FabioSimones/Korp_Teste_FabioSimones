@@ -112,7 +112,7 @@ selecionado antes do envio.
 
 **5. Detalhes, status e fechamento da nota**
 
-![Detalhe de uma nota fiscal com status FECHADA e data de fechamento](docs/images/screenshots/invoice-detail.png)
+![Detalhe de uma nota fiscal com status FECHADA e data de fechamento](docs/images/screenshots/invoice-detail-closed.png)
 
 Após a impressão, a nota muda para `FECHADA` e o botão de impressão fica desabilitado — a
 baixa de estoque já foi confirmada e não pode ser repetida pela UI.
@@ -122,17 +122,18 @@ baixa de estoque já foi confirmada e não pode ser repetida pela UI.
 
 **6. Visualização preparada para impressão**
 
-*(imagem pendente — ver `docs/images/screenshots/README.md`)*
+![Caixa de diálogo de impressão do navegador mostrando somente a nota fiscal, com status Fechada, sem toast ou navegação](docs/images/screenshots/invoice-print-preview.png)
 
-Tela dedicada (`invoice-print-view`, CSS `@media print`) com o layout formatado para impressão da
-nota fechada.
+Diálogo de impressão do navegador mostrando apenas o conteúdo da nota (`invoice-print-view`),
+já com status `Fechada` e sem nenhum elemento da tela normal (toast, navegação, botões) — ver
+`docs/tasks/task-17-clean-invoice-print.md`.
 
 </td>
 </tr>
 </table>
 
-Mais capturas de tela (validação de formulário, estados intermediários dos modais, erro de saldo
-insuficiente) estão na [galeria completa](docs/screenshots.md).
+Mais capturas de tela (validação de formulário, erro de saldo insuficiente, Swagger de cada API,
+telas de indisponibilidade do serviço) estão na [galeria completa](docs/screenshots.md).
 
 ## 6. Tecnologias
 
