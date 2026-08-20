@@ -73,7 +73,7 @@
           matInput
           type="number"
           formControlName="balance"
-          min="0"
+          min="1"
           step="1"
           required
           aria-describedby="product-form-dialog-balance-error"
@@ -82,10 +82,10 @@
           <mat-error id="product-form-dialog-balance-error">
             @if (form.controls.balance.hasError('required')) {
               Informe o saldo inicial.
-            } @else if (form.controls.balance.hasError('min')) {
-              O saldo não pode ser negativo.
-            } @else if (form.controls.balance.hasError('integer')) {
-              O saldo deve ser um número inteiro.
+            } @else if (
+              form.controls.balance.hasError('min') || form.controls.balance.hasError('integer')
+            ) {
+              Informe um saldo inicial inteiro maior que zero.
             }
           </mat-error>
         }
@@ -103,7 +103,7 @@
           mat-flat-button
           color="primary"
           type="submit"
-          [disabled]="submitting()"
+          [disabled]="submitting() || form.invalid"
           class="product-form-dialog__submit"
         >
           @if (submitting()) {

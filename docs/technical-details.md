@@ -1388,3 +1388,35 @@ Todas as suítes de idempotência (`OperationId`), concorrência (`SELECT ... FO
 asserções de comportamento (contagem de tentativas, número de debits aplicados, estado final)
 já existentes antes desta mudança — apenas mensagens/`errorCode` foram adicionados por cima.
 
+## Saldo inicial obrigatório maior que zero (cadastro de produtos)
+
+`Product.Create` (`Inventory.Api`) passa a exigir `balance >= 1` (antes: `balance >= 0`),
+lançando `ProductValidationException` com a mensagem `"O saldo inicial deve ser um número
+inteiro maior que zero."` para `balance` igual a `0` ou negativo. Reaproveita o `errorCode`
+já existente `INVALID_PRODUCT` — nenhum código novo foi criado.
+
+- **Saldo inicial vs. saldo atual**: a regra vale somente para a criação do produto.
+  `Product.Debit` (baixa de estoque) continua podendo levar o saldo **atual** de um produto já
+  existente exatamente a zero — apenas nunca abaixo de zero. O cenário "produto criado com
+  saldo `1`, baixa de `1`, saldo final `0`" tem teste de regressão dedicado
+  (`Create_With_Balance_One_Then_Debit_One_Reaches_Zero`).
+- **Constraint de banco inalterada**: `CK_products_balance_non_negative`
+  (`"Balance" >= 0`) permanece exatamente como estava, pois já representa corretamente a regra
+  de saldo atual. Não foi criada — nem seria correto criar — uma constraint `Balance > 0`, o que
+  impediria uma baixa válida de consumir a última unidade de um produto.
+- **Nenhuma migration**: a regra é exclusiva da camada de domínio (`Product.Create`), não do
+  schema. Produtos pré-existentes com saldo `0` continuam existindo sem qualquer ajuste.
+- **Frontend** (`product-form-dialog`): o campo de saldo inicial passa a ser um
+  `FormControl<number | null>` iniciado em `null` (vazio), em vez de `0` — decisão deliberada,
+  já que `0` deixou de ser um valor válido e pré-preenchê-lo daria a falsa impressão de que o
+  formulário já está pronto para envio. Usa `Validators.min(1)` (antes `min(0)`) e o
+  `integerValidator` já existente para decimais. O botão "Cadastrar produto" passa a ficar
+  desabilitado enquanto o formulário for inválido (`[disabled]="submitting() || form.invalid"`),
+  no mesmo padrão já usado em `invoice-form.html`.
+- **Testes adicionados/ajustados**: `ProductDomainTests` (saldo `0` agora rejeitado; saldo `1`
+  aceito; regressão de baixa até zero) e `ProductsApiTests` (novo caso `balance=0` no teste
+  parametrizado de dados inválidos; teste dedicado confirmando `400`, `errorCode=INVALID_PRODUCT`,
+  `traceId`, mensagem em português e ausência de persistência para `balance` `0`/`-1`; teste
+  confirmando `201` e persistência para `balance=1`); `product-form-dialog.spec.ts` (campo vazio
+  inicial, saldo `0` rejeitado com botão desabilitado, saldo `1` habilita o botão).
+

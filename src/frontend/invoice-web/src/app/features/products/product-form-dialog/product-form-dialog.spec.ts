@@ -103,24 +103,66 @@ describe('ProductFormDialog', () => {
     expect(el().textContent).toContain('Informe a descrição do produto.');
   });
 
-  it('should reject a negative balance', () => {
+  it('should start the balance field empty rather than pre-filled with 0', () => {
+    setup();
+
+    const balanceInput: HTMLInputElement = el().querySelector('input[formcontrolname="balance"]')!;
+    expect(balanceInput.value).toBe('');
+  });
+
+  it('should reject a zero balance and keep the submit button disabled', () => {
+    setup();
+
+    fillForm('A1', 'Produto A', '0');
+    submitForm();
+
+    expect(productsService.create).not.toHaveBeenCalled();
+    expect(el().textContent).toContain('Informe um saldo inicial inteiro maior que zero.');
+    const submitButton: HTMLButtonElement = el().querySelector(
+      'button[type="submit"]',
+    ) as HTMLButtonElement;
+    expect(submitButton.disabled).toBe(true);
+  });
+
+  it('should reject a negative balance and keep the submit button disabled', () => {
     setup();
 
     fillForm('A1', 'Produto A', '-5');
     submitForm();
 
     expect(productsService.create).not.toHaveBeenCalled();
-    expect(el().textContent).toContain('O saldo não pode ser negativo.');
+    expect(el().textContent).toContain('Informe um saldo inicial inteiro maior que zero.');
+    const submitButton: HTMLButtonElement = el().querySelector(
+      'button[type="submit"]',
+    ) as HTMLButtonElement;
+    expect(submitButton.disabled).toBe(true);
   });
 
-  it('should reject a non-integer balance', () => {
+  it('should reject a non-integer balance and keep the submit button disabled', () => {
     setup();
 
     fillForm('A1', 'Produto A', '2.5');
     submitForm();
 
     expect(productsService.create).not.toHaveBeenCalled();
-    expect(el().textContent).toContain('O saldo deve ser um número inteiro.');
+    expect(el().textContent).toContain('Informe um saldo inicial inteiro maior que zero.');
+    const submitButton: HTMLButtonElement = el().querySelector(
+      'button[type="submit"]',
+    ) as HTMLButtonElement;
+    expect(submitButton.disabled).toBe(true);
+  });
+
+  it('should enable the submit button once balance 1 is entered alongside valid code/description', () => {
+    setup();
+
+    const submitButton: HTMLButtonElement = el().querySelector(
+      'button[type="submit"]',
+    ) as HTMLButtonElement;
+    expect(submitButton.disabled).toBe(true);
+
+    fillForm('A1', 'Produto A', '1');
+
+    expect(submitButton.disabled).toBe(false);
   });
 
   it('should submit, notify and close the dialog with the created product on success', () => {

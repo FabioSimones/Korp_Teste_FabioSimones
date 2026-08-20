@@ -2,8 +2,9 @@ namespace Inventory.Api.Features.Products;
 
 /// <summary>
 /// Product owned by the Inventory service. Enforces its own invariants
-/// (required code/description, non-negative balance) independently of the
-/// HTTP layer or the database constraints.
+/// (required code/description, positive initial balance on creation,
+/// non-negative current balance thereafter) independently of the HTTP
+/// layer or the database constraints.
 /// </summary>
 public class Product
 {
@@ -48,9 +49,9 @@ public class Product
             errors.Add("A descrição é obrigatória.");
         }
 
-        if (balance < 0)
+        if (balance < 1)
         {
-            errors.Add("O saldo deve ser maior ou igual a zero.");
+            errors.Add("O saldo inicial deve ser um número inteiro maior que zero.");
         }
 
         if (errors.Count > 0)

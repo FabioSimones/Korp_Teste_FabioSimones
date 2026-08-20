@@ -80,6 +80,7 @@ public class ProductsApiTests : IAsyncLifetime
     [InlineData("SKU-002", null, 1)]
     [InlineData("SKU-003", "", 1)]
     [InlineData("SKU-004", "Widget", -1)]
+    [InlineData("SKU-005", "Widget", 0)]
     public async Task Create_With_Invalid_Data_Returns_BadRequest(string? code, string? description, int balance)
     {
         // Arrange
@@ -90,6 +91,59 @@ public class ProductsApiTests : IAsyncLifetime
 
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task Create_With_Non_Positive_Initial_Balance_Returns_BadRequest_With_Portuguese_Message_ErrorCode_And_TraceId_And_Does_Not_Persist(int balance)
+    {
+        // Arrange
+        var request = new CreateProductRequest("SKU-ZERO", "Widget", balance);
+
+        // Act
+        using var response = await _client.PostAsJsonAsync("/api/products", request);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+
+        var problem = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.True(problem.TryGetProperty("traceId", out var traceId));
+        Assert.False(string.IsNullOrWhiteSpace(traceId.GetString()));
+        Assert.True(problem.TryGetProperty("errorCode", out var errorCode));
+        Assert.Equal("INVALID_PRODUCT", errorCode.GetString());
+        Assert.True(problem.TryGetProperty("errors", out var errors));
+        Assert.Contains(
+            "O saldo inicial deve ser um número inteiro maior que zero.",
+            errors.GetProperty("product").EnumerateArray().Select(e => e.GetString()));
+        Assert.False(problem.ToString().Contains("StackTrace", StringComparison.OrdinalIgnoreCase));
+
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+        Assert.False(await dbContext.Products.AnyAsync(p => p.Code == "SKU-ZERO"));
+    }
+
+    [Fact]
+    public async Task Create_With_Initial_Balance_One_Returns_Created_And_Persists()
+    {
+        // Arrange
+        var request = new CreateProductRequest("SKU-ONE", "Widget", 1);
+
+        // Act
+        using var response = await _client.PostAsJsonAsync("/api/products", request);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var created = await response.Content.ReadFromJsonAsync<ProductResponse>();
+        Assert.NotNull(created);
+        Assert.Equal(1, created!.Balance);
+
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+        var persisted = await dbContext.Products.AsNoTracking().SingleAsync(p => p.Code == "SKU-ONE");
+        Assert.Equal(1, persisted.Balance);
     }
 
     [Fact]

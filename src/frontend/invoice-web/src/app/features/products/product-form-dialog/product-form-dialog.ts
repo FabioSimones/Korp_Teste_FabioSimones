@@ -70,9 +70,9 @@ export class ProductFormDialog {
   protected readonly form = this.fb.nonNullable.group({
     code: this.fb.nonNullable.control('', [Validators.required, Validators.maxLength(50)]),
     description: this.fb.nonNullable.control('', [Validators.required, Validators.maxLength(200)]),
-    balance: this.fb.nonNullable.control(0, [
+    balance: this.fb.control<number | null>(null, [
       Validators.required,
-      Validators.min(0),
+      Validators.min(1),
       integerValidator,
     ]),
   });
@@ -92,7 +92,7 @@ export class ProductFormDialog {
     const { code, description, balance } = this.form.getRawValue();
 
     this.productsService
-      .create({ code: code.trim(), description: description.trim(), balance })
+      .create({ code: code.trim(), description: description.trim(), balance: balance as number })
       .pipe(
         finalize(() => {
           this.submitting.set(false);
