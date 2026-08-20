@@ -9,7 +9,7 @@ public class ProductValidationException : Exception
     public IReadOnlyCollection<string> Errors { get; }
 
     public ProductValidationException(IEnumerable<string> errors)
-        : base("Invalid product data.")
+        : base("Dados do produto inválidos.")
     {
         Errors = errors.ToList();
     }
@@ -23,7 +23,7 @@ public class DuplicateProductCodeException : Exception
     public string Code { get; }
 
     public DuplicateProductCodeException(string code)
-        : base($"Product code '{code}' is already registered.")
+        : base("Já existe um produto cadastrado com este código.")
     {
         Code = code;
     }
@@ -37,9 +37,41 @@ public class ProductNotFoundException : Exception
     public int Id { get; }
 
     public ProductNotFoundException(int id)
-        : base($"Product '{id}' was not found.")
+        : base("Produto não encontrado.")
     {
         Id = id;
+    }
+}
+
+/// <summary>
+/// Thrown when the pagination parameters for a paged listing are invalid
+/// (page number less than 1, or page size outside the allowed range).
+/// Maps to HTTP 400.
+/// </summary>
+public class InvalidPaginationException : Exception
+{
+    public IReadOnlyCollection<string> Errors { get; }
+
+    public InvalidPaginationException(IEnumerable<string> errors)
+        : base("Parâmetros de paginação inválidos.")
+    {
+        Errors = errors.ToList();
+    }
+}
+
+/// <summary>
+/// Thrown when the sort parameters for a paged listing are invalid: an
+/// unsupported <c>sortBy</c> field, or a <c>sortDirection</c> other than
+/// <c>asc</c>/<c>desc</c>. Maps to HTTP 400.
+/// </summary>
+public class InvalidSortException : Exception
+{
+    public IReadOnlyCollection<string> Errors { get; }
+
+    public InvalidSortException(IEnumerable<string> errors)
+        : base("Parâmetros de ordenação inválidos.")
+    {
+        Errors = errors.ToList();
     }
 }
 
@@ -59,7 +91,7 @@ public class InsufficientProductBalanceException : Exception
     public int RequestedQuantity { get; }
 
     public InsufficientProductBalanceException(int productId, string code, int availableBalance, int requestedQuantity)
-        : base($"Product '{code}' has insufficient balance. Available: {availableBalance}, requested: {requestedQuantity}.")
+        : base($"O produto \"{code}\" não possui saldo suficiente. Disponível: {availableBalance}; solicitado: {requestedQuantity}.")
     {
         ProductId = productId;
         Code = code;

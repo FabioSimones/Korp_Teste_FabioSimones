@@ -2,14 +2,18 @@
   display: inline-flex;
   align-items: center;
   padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  background: #e6f4ea;
-  color: #1e7d34;
+  border-radius: 3px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid var(--color-success);
 }
 
 .invoice-status-badge--closed {
-  background: #eceff1;
-  color: #455a64;
+  background: var(--color-bg-app);
+  color: var(--color-ink-secondary);
+  border-color: var(--color-border);
 }

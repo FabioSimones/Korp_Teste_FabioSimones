@@ -1,3 +1,4 @@
+using Inventory.Api.Common;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Inventory.Api.Features.Products;
@@ -38,9 +39,10 @@ public class ProductsController : ControllerBase
         catch (DuplicateProductCodeException ex)
         {
             return Conflict(BuildProblem(
-                "Product code already registered.",
+                "Código de produto já cadastrado.",
                 StatusCodes.Status409Conflict,
-                ex.Message));
+                ex.Message,
+                "DUPLICATE_PRODUCT_CODE"));
         }
     }
 
@@ -51,6 +53,39 @@ public class ProductsController : ControllerBase
     {
         var products = await _productService.GetAllAsync(cancellationToken);
         return Ok(products);
+    }
+
+    /// <summary>
+    /// Lists registered products with server-side pagination, ordered
+    /// deterministically by <c>Code</c> then <c>Id</c>. Separate from
+    /// <see cref="GetAll"/> so the unpaginated endpoint (used by the invoice
+    /// creation form) keeps its existing contract unchanged.
+    /// </summary>
+    [HttpGet("paged")]
+    [ProducesResponseType(typeof(PagedResponse<ProductResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PagedResponse<ProductResponse>>> GetPaged(
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 5,
+        [FromQuery] string sortBy = "code",
+        [FromQuery] string sortDirection = "asc",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var page = await _productService.GetPagedAsync(
+                new ProductsPageQuery(pageNumber, pageSize, sortBy, sortDirection),
+                cancellationToken);
+            return Ok(page);
+        }
+        catch (InvalidPaginationException ex)
+        {
+            return BadRequest(BuildValidationProblem(ex));
+        }
+        catch (InvalidSortException ex)
+        {
+            return BadRequest(BuildValidationProblem(ex));
+        }
     }
 
     /// <summary>Retrieves a single product by id.</summary>
@@ -67,9 +102,10 @@ public class ProductsController : ControllerBase
         catch (ProductNotFoundException ex)
         {
             return NotFound(BuildProblem(
-                "Product not found.",
+                "Produto não encontrado.",
                 StatusCodes.Status404NotFound,
-                ex.Message));
+                ex.Message,
+                "PRODUCT_NOT_FOUND"));
         }
     }
 
@@ -77,17 +113,48 @@ public class ProductsController : ControllerBase
     {
         var problem = new ValidationProblemDetails
         {
-            Title = "Invalid product data.",
+            Title = "Dados do produto inválidos.",
             Status = StatusCodes.Status400BadRequest,
             Detail = ex.Message,
             Instance = HttpContext.Request.Path,
         };
         problem.Errors["product"] = ex.Errors.ToArray();
         problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        problem.Extensions["errorCode"] = "INVALID_PRODUCT";
         return problem;
     }
 
-    private ProblemDetails BuildProblem(string title, int status, string detail)
+    private ValidationProblemDetails BuildValidationProblem(InvalidPaginationException ex)
+    {
+        var problem = new ValidationProblemDetails
+        {
+            Title = "Parâmetros de paginação inválidos.",
+            Status = StatusCodes.Status400BadRequest,
+            Detail = ex.Message,
+            Instance = HttpContext.Request.Path,
+        };
+        problem.Errors["pagination"] = ex.Errors.ToArray();
+        problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        problem.Extensions["errorCode"] = "INVALID_PAGINATION";
+        return problem;
+    }
+
+    private ValidationProblemDetails BuildValidationProblem(InvalidSortException ex)
+    {
+        var problem = new ValidationProblemDetails
+        {
+            Title = "Parâmetros de ordenação inválidos.",
+            Status = StatusCodes.Status400BadRequest,
+            Detail = ex.Message,
+            Instance = HttpContext.Request.Path,
+        };
+        problem.Errors["sort"] = ex.Errors.ToArray();
+        problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        problem.Extensions["errorCode"] = "INVALID_SORT";
+        return problem;
+    }
+
+    private ProblemDetails BuildProblem(string title, int status, string detail, string errorCode)
     {
         var problem = new ProblemDetails
         {
@@ -97,6 +164,7 @@ public class ProductsController : ControllerBase
             Instance = HttpContext.Request.Path,
         };
         problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        problem.Extensions["errorCode"] = errorCode;
         return problem;
     }
 }

@@ -182,6 +182,21 @@ public class InvoicesPrintRealInventoryIntegrationTests : IAsyncLifetime
         // Assert
         Assert.Equal(HttpStatusCode.Conflict, printResponse.StatusCode);
 
+        // Assert: public ProblemDetails contract for the central "insufficient
+        // stock at print time" scenario -- errorCode, traceId, no stack trace,
+        // and the exact PT-BR message format the frontend renders verbatim.
+        var problem = await printResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.True(problem.TryGetProperty("errorCode", out var errorCode));
+        Assert.Equal("INSUFFICIENT_STOCK", errorCode.GetString());
+        Assert.True(problem.TryGetProperty("traceId", out var traceId));
+        Assert.False(string.IsNullOrWhiteSpace(traceId.GetString()));
+        Assert.True(problem.TryGetProperty("detail", out var detail));
+        Assert.Equal(
+            $"O produto \"{product.Code}\" não possui saldo suficiente. Disponível: 2; solicitado: 5.",
+            detail.GetString());
+        Assert.False(problem.ToString().Contains("StackTrace", StringComparison.OrdinalIgnoreCase));
+        Assert.False(problem.ToString().Contains("Npgsql", StringComparison.OrdinalIgnoreCase));
+
         using var getResponse = await _billingClient.GetAsync($"/api/invoices/{invoice.Id}");
         var reloaded = await getResponse.Content.ReadFromJsonAsync<InvoiceResponse>();
         Assert.Equal("Open", reloaded!.Status);

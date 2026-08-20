@@ -98,11 +98,15 @@ public class InvoicesPrintResilienceApiTests : IAsyncLifetime
         // Act
         using var printResponse = await client.PostAsync($"/api/invoices/{invoice.Id}/print", null);
 
-        // Assert: public contract is 503 + ProblemDetails + traceId.
+        // Assert: public contract is 503 + ProblemDetails + traceId + errorCode.
         Assert.Equal(HttpStatusCode.ServiceUnavailable, printResponse.StatusCode);
         var problem = await printResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(problem.TryGetProperty("traceId", out var traceId));
         Assert.False(string.IsNullOrWhiteSpace(traceId.GetString()));
+        Assert.True(problem.TryGetProperty("errorCode", out var errorCode));
+        Assert.Equal("INVENTORY_UNAVAILABLE", errorCode.GetString());
+        Assert.True(problem.TryGetProperty("detail", out var detail));
+        Assert.False(detail.GetString()!.Contains("Exception", StringComparison.OrdinalIgnoreCase));
 
         // Assert: 1 initial attempt + 2 retries = 3 HTTP attempts reached the "network".
         Assert.Equal(3, handler.CallCount);
@@ -143,6 +147,8 @@ public class InvoicesPrintResilienceApiTests : IAsyncLifetime
         var problem = await printResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(problem.TryGetProperty("traceId", out var traceId));
         Assert.False(string.IsNullOrWhiteSpace(traceId.GetString()));
+        Assert.True(problem.TryGetProperty("errorCode", out var errorCode));
+        Assert.Equal("INVENTORY_TIMEOUT", errorCode.GetString());
 
         Assert.Equal(3, handler.CallCount);
 

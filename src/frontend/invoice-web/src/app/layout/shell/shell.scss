@@ -1,27 +1,135 @@
-.shell {
-  height: 100vh;
+:host {
+  display: block;
+  min-height: 100vh;
 }
 
-.shell__sidenav {
-  width: 240px;
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--color-bg-app);
 }
 
-.shell__title {
-  margin-left: 8px;
+.app-shell__topbar {
+  background: var(--color-bg-paper);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-shell__topbar-inner {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.app-shell__brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--color-ink);
+  min-height: 44px;
+}
+
+.app-shell__brand-name {
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 44px;
+}
+
+.app-shell__brand-tag {
+  font-size: 0.8rem;
+  color: var(--color-ink-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.app-shell__nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.app-shell__nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--color-ink-secondary);
+  text-decoration: none;
   font-weight: 500;
+  border-bottom: 2px solid transparent;
 }
 
-.shell__content {
-  padding: 16px;
+.app-shell__nav-link:hover {
+  color: var(--color-ink);
+  background: var(--color-action-tint);
+}
+
+.app-shell__nav-link:focus-visible {
+  outline: 2px solid var(--color-action);
+  outline-offset: -2px;
+}
+
+.app-shell__nav-link--active {
+  color: var(--color-ink);
+  font-weight: 700;
+  border-bottom-color: var(--color-action);
+}
+
+.app-shell__content {
+  flex: 1;
+  padding: 24px;
   box-sizing: border-box;
 }
 
-.active-link {
-  background-color: var(--mat-sys-secondary-container);
+.app-shell__paper {
+  max-width: 1040px;
+  margin: 0 auto;
+  background: var(--color-bg-paper);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .app-shell__topbar-inner {
+    padding: 8px 16px;
+  }
+
+  .app-shell__content {
+    padding: 16px;
+  }
+
+  .app-shell__paper {
+    padding: 16px;
+  }
 }
 
 @media (max-width: 599px) {
-  .shell__content {
+  .app-shell__topbar-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .app-shell__nav {
+    width: 100%;
+  }
+
+  .app-shell__content {
+    padding: 12px;
+  }
+
+  .app-shell__paper {
     padding: 12px;
   }
 }

@@ -1,3 +1,4 @@
+using Billing.Api.Common;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Billing.Api.Features.Invoices;
@@ -40,23 +41,26 @@ public class InvoicesController : ControllerBase
         catch (InvoiceProductNotFoundException ex)
         {
             return NotFound(BuildProblem(
-                "Product not found.",
+                "Produto não encontrado.",
                 StatusCodes.Status404NotFound,
-                ex.Message));
+                ex.Message,
+                "PRODUCT_NOT_FOUND"));
         }
         catch (DuplicateInvoiceNumberException ex)
         {
             return Conflict(BuildProblem(
-                "Invoice number conflict.",
+                "Conflito na numeração da nota fiscal.",
                 StatusCodes.Status409Conflict,
-                ex.Message));
+                ex.Message,
+                "DUPLICATE_INVOICE_NUMBER"));
         }
         catch (InventoryServiceUnavailableException ex)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, BuildProblem(
-                "Inventory service unavailable.",
+                "Serviço de estoque indisponível.",
                 StatusCodes.Status503ServiceUnavailable,
-                ex.Message));
+                ex.Message,
+                ErrorCodeFor(ex)));
         }
     }
 
@@ -67,6 +71,40 @@ public class InvoicesController : ControllerBase
     {
         var invoices = await _invoiceService.GetAllAsync(cancellationToken);
         return Ok(invoices);
+    }
+
+    /// <summary>
+    /// Lists invoices with server-side pagination, ordered deterministically
+    /// by <c>Number</c> descending then <c>Id</c>. Separate from
+    /// <see cref="GetAll"/> so the unpaginated endpoint keeps its existing
+    /// contract unchanged. Read-only against Billing's own database; never
+    /// calls the Inventory service.
+    /// </summary>
+    [HttpGet("paged")]
+    [ProducesResponseType(typeof(PagedResponse<InvoiceSummaryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PagedResponse<InvoiceSummaryResponse>>> GetPaged(
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 5,
+        [FromQuery] string sortBy = "number",
+        [FromQuery] string sortDirection = "desc",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var page = await _invoiceService.GetPagedAsync(
+                new InvoicesPageQuery(pageNumber, pageSize, sortBy, sortDirection),
+                cancellationToken);
+            return Ok(page);
+        }
+        catch (InvalidPaginationException ex)
+        {
+            return BadRequest(BuildValidationProblem(ex));
+        }
+        catch (InvalidSortException ex)
+        {
+            return BadRequest(BuildValidationProblem(ex));
+        }
     }
 
     /// <summary>Retrieves a single invoice by id, including its item snapshot.</summary>
@@ -83,9 +121,10 @@ public class InvoicesController : ControllerBase
         catch (InvoiceNotFoundException ex)
         {
             return NotFound(BuildProblem(
-                "Invoice not found.",
+                "Nota fiscal não encontrada.",
                 StatusCodes.Status404NotFound,
-                ex.Message));
+                ex.Message,
+                "INVOICE_NOT_FOUND"));
         }
     }
 
@@ -112,37 +151,42 @@ public class InvoicesController : ControllerBase
         catch (InvoiceNotFoundException ex)
         {
             return NotFound(BuildProblem(
-                "Invoice not found.",
+                "Nota fiscal não encontrada.",
                 StatusCodes.Status404NotFound,
-                ex.Message));
+                ex.Message,
+                "INVOICE_NOT_FOUND"));
         }
         catch (InvoiceAlreadyClosedException ex)
         {
             return Conflict(BuildProblem(
-                "Invoice already closed.",
+                "Nota fiscal já fechada.",
                 StatusCodes.Status409Conflict,
-                ex.Message));
+                ex.Message,
+                "INVOICE_ALREADY_CLOSED"));
         }
         catch (InvoiceProductNotFoundException ex)
         {
             return NotFound(BuildProblem(
-                "Product not found.",
+                "Produto não encontrado.",
                 StatusCodes.Status404NotFound,
-                ex.Message));
+                ex.Message,
+                "PRODUCT_NOT_FOUND"));
         }
         catch (InsufficientStockBalanceException ex)
         {
             return Conflict(BuildProblem(
-                "Insufficient stock balance.",
+                "Saldo de estoque insuficiente.",
                 StatusCodes.Status409Conflict,
-                ex.Message));
+                ex.Message,
+                "INSUFFICIENT_STOCK"));
         }
         catch (InventoryServiceUnavailableException ex)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, BuildProblem(
-                "Inventory service unavailable.",
+                "Serviço de estoque indisponível.",
                 StatusCodes.Status503ServiceUnavailable,
-                ex.Message));
+                ex.Message,
+                ErrorCodeFor(ex)));
         }
     }
 
@@ -150,17 +194,48 @@ public class InvoicesController : ControllerBase
     {
         var problem = new ValidationProblemDetails
         {
-            Title = "Invalid invoice data.",
+            Title = "Dados da nota fiscal inválidos.",
             Status = StatusCodes.Status400BadRequest,
             Detail = ex.Message,
             Instance = HttpContext.Request.Path,
         };
         problem.Errors["invoice"] = ex.Errors.ToArray();
         problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        problem.Extensions["errorCode"] = "INVALID_INVOICE";
         return problem;
     }
 
-    private ProblemDetails BuildProblem(string title, int status, string detail)
+    private ValidationProblemDetails BuildValidationProblem(InvalidPaginationException ex)
+    {
+        var problem = new ValidationProblemDetails
+        {
+            Title = "Parâmetros de paginação inválidos.",
+            Status = StatusCodes.Status400BadRequest,
+            Detail = ex.Message,
+            Instance = HttpContext.Request.Path,
+        };
+        problem.Errors["pagination"] = ex.Errors.ToArray();
+        problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        problem.Extensions["errorCode"] = "INVALID_PAGINATION";
+        return problem;
+    }
+
+    private ValidationProblemDetails BuildValidationProblem(InvalidSortException ex)
+    {
+        var problem = new ValidationProblemDetails
+        {
+            Title = "Parâmetros de ordenação inválidos.",
+            Status = StatusCodes.Status400BadRequest,
+            Detail = ex.Message,
+            Instance = HttpContext.Request.Path,
+        };
+        problem.Errors["sort"] = ex.Errors.ToArray();
+        problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        problem.Extensions["errorCode"] = "INVALID_SORT";
+        return problem;
+    }
+
+    private ProblemDetails BuildProblem(string title, int status, string detail, string errorCode)
     {
         var problem = new ProblemDetails
         {
@@ -170,6 +245,16 @@ public class InvoicesController : ControllerBase
             Instance = HttpContext.Request.Path,
         };
         problem.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        problem.Extensions["errorCode"] = errorCode;
         return problem;
     }
+
+    /// <summary>
+    /// Maps <see cref="InventoryServiceUnavailableException.Reason"/> to the
+    /// public <c>errorCode</c>: <c>INVENTORY_TIMEOUT</c> when the resilience
+    /// pipeline's timeout tripped, <c>INVENTORY_UNAVAILABLE</c> for every
+    /// other unreachable/unexpected-response case. Both still map to HTTP 503.
+    /// </summary>
+    private static string ErrorCodeFor(InventoryServiceUnavailableException ex) =>
+        ex.Reason == InventoryUnavailableReason.Timeout ? "INVENTORY_TIMEOUT" : "INVENTORY_UNAVAILABLE";
 }

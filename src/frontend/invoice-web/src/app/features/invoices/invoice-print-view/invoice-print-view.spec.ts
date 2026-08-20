@@ -36,4 +36,25 @@ describe('InvoicePrintView', () => {
     expect(content).toContain('Produto A');
     expect(content).toContain('3');
   });
+
+  it('should mark the Quantidade header and value with the numeric column class, and Código/Descrição with the text column class', () => {
+    const headerCells: HTMLTableCellElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.invoice-print-view__table thead th'),
+    );
+    const quantidadeHeader = headerCells.find((th) => th.textContent?.trim() === 'Quantidade')!;
+    expect(quantidadeHeader.classList).toContain('invoice-print-view__col-numeric');
+
+    const codigoHeader = headerCells.find((th) => th.textContent?.trim() === 'Código')!;
+    const descricaoHeader = headerCells.find((th) => th.textContent?.trim() === 'Descrição')!;
+    expect(codigoHeader.classList).toContain('invoice-print-view__col-text');
+    expect(descricaoHeader.classList).toContain('invoice-print-view__col-text');
+
+    const quantidadeCells: HTMLTableCellElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        '.invoice-print-view__table tbody td.invoice-print-view__col-numeric',
+      ),
+    );
+    expect(quantidadeCells.length).toBe(invoice.items.length);
+    expect(quantidadeCells[0].textContent?.trim()).toBe('3');
+  });
 });

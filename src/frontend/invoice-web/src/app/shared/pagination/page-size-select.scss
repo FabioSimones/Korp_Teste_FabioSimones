@@ -1,0 +1,26 @@
+.page-size-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--color-ink-secondary);
+}
+
+.page-size-select__control {
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-paper);
+  color: var(--color-ink);
+  font: inherit;
+}
+
+.page-size-select__control:disabled {
+  opacity: 0.6;
+}
+
+.page-size-select__control:focus-visible {
+  outline: 2px solid var(--color-action);
+  outline-offset: 2px;
+}

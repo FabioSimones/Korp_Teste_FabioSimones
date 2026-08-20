@@ -57,7 +57,7 @@ public class InventoryStockClient : IInventoryStockClient
         }
         catch (HttpRequestException ex)
         {
-            throw new InventoryServiceUnavailableException("The Inventory service is unavailable.", ex);
+            throw new InventoryServiceUnavailableException("Não foi possível consultar o serviço de estoque.", ex);
         }
         catch (TimeoutRejectedException ex)
         {
@@ -65,20 +65,22 @@ public class InventoryStockClient : IInventoryStockClient
             // (Task 11), distinct from the caller cancelling the request.
             // The invoice stays Open: InvoiceService only closes it after
             // DebitAsync returns successfully.
-            throw new InventoryServiceUnavailableException("The Inventory service request timed out.", ex);
+            throw new InventoryServiceUnavailableException(
+                "O serviço de estoque demorou mais que o esperado para responder.", ex, InventoryUnavailableReason.Timeout);
         }
         catch (BrokenCircuitException ex)
         {
             // The circuit breaker is open and short-circuited the call
             // before reaching Inventory.Api (Task 11).
-            throw new InventoryServiceUnavailableException("The Inventory service circuit breaker is open.", ex);
+            throw new InventoryServiceUnavailableException("Não foi possível consultar o serviço de estoque.", ex);
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             // HttpClient.Timeout safety-net elapsed; should not normally
             // trigger since it sits well above the pipeline's own total
             // timeout (see Program.cs).
-            throw new InventoryServiceUnavailableException("The Inventory service request timed out.", ex);
+            throw new InventoryServiceUnavailableException(
+                "O serviço de estoque demorou mais que o esperado para responder.", ex, InventoryUnavailableReason.Timeout);
         }
 
         using (response)
@@ -91,14 +93,13 @@ public class InventoryStockClient : IInventoryStockClient
             if (response.StatusCode == HttpStatusCode.Conflict)
             {
                 var detail = await ExtractProblemDetailAsync(response, cancellationToken)
-                    ?? "The Inventory service reported an insufficient stock balance.";
+                    ?? "Não foi possível imprimir a nota fiscal porque não há saldo suficiente.";
                 throw new InsufficientStockBalanceException(detail);
             }
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new InventoryServiceUnavailableException(
-                    $"The Inventory service responded with unexpected status {(int)response.StatusCode}.");
+                throw new InventoryServiceUnavailableException("Não foi possível consultar o serviço de estoque.");
             }
 
             StockDebitResultDto? result;
@@ -108,12 +109,12 @@ public class InventoryStockClient : IInventoryStockClient
             }
             catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
             {
-                throw new InventoryServiceUnavailableException("The Inventory service returned an invalid response.", ex);
+                throw new InventoryServiceUnavailableException("Não foi possível consultar o serviço de estoque.", ex);
             }
 
             if (result is null)
             {
-                throw new InventoryServiceUnavailableException("The Inventory service returned an empty response.");
+                throw new InventoryServiceUnavailableException("Não foi possível consultar o serviço de estoque.");
             }
 
             return result;

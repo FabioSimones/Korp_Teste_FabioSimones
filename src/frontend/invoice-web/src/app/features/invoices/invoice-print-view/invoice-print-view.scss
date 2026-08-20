@@ -35,5 +35,16 @@
 .invoice-print-view__table td {
   border: 1px solid #000;
   padding: 4px 8px;
+}
+
+// Every header and cell in the printed items table carries one of these,
+// so the column alignment is explicit per cell rather than a single
+// blanket `text-align: left` that numeric values would need to fight.
+.invoice-print-view__col-text {
   text-align: left;
+}
+
+.invoice-print-view__col-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

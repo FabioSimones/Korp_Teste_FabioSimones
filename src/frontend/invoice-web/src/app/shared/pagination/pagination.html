@@ -1,0 +1,48 @@
+<nav class="pagination" aria-label="Paginação">
+  <p class="pagination__summary" aria-live="polite">
+    @if (totalCount === 0) {
+      Nenhum resultado encontrado.
+    } @else {
+      {{ rangeStart }}–{{ rangeEnd }} de {{ totalCount }} · Página {{ pageNumber }} de
+      {{ displayTotalPages }}
+    }
+  </p>
+
+  <div class="pagination__buttons">
+    <button
+      type="button"
+      class="pagination__button pagination__button--previous"
+      [disabled]="previousDisabled"
+      (click)="goToPreviousPage()"
+    >
+      Anterior
+    </button>
+
+    @for (item of pageItems; track $index) {
+      @if (isEllipsis(item)) {
+        <span class="pagination__ellipsis" aria-hidden="true">…</span>
+      } @else {
+        <button
+          type="button"
+          class="pagination__page"
+          [class.pagination__page--current]="isCurrentPage(item)"
+          [attr.aria-current]="isCurrentPage(item) ? 'page' : null"
+          [attr.aria-label]="'Página ' + item"
+          [disabled]="loading || isCurrentPage(item)"
+          (click)="goToPage(item)"
+        >
+          {{ item }}
+        </button>
+      }
+    }
+
+    <button
+      type="button"
+      class="pagination__button pagination__button--next"
+      [disabled]="nextDisabled"
+      (click)="goToNextPage()"
+    >
+      Próxima
+    </button>
+  </div>
+</nav>

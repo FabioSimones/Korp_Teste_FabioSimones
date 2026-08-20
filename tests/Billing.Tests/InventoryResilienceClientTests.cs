@@ -67,6 +67,7 @@ public class InventoryResilienceClientTests
         // (never a raw Polly type), which InvoicesController maps to 503.
         Assert.Equal(3, handler.CallCount);
         Assert.NotNull(ex);
+        Assert.Equal(InventoryUnavailableReason.Unavailable, ex.Reason);
     }
 
     [Fact]
@@ -95,7 +96,8 @@ public class InventoryResilienceClientTests
 
         // Assert: 1 initial attempt + 2 retries, each individually timed out.
         Assert.Equal(3, handler.CallCount);
-        Assert.Contains("timed out", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("demorou mais que o esperado", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(InventoryUnavailableReason.Timeout, ex.Reason);
     }
 
     [Fact]

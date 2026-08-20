@@ -44,3 +44,35 @@ export interface CreateInvoiceItemRequest {
 export interface CreateInvoiceRequest {
   readonly items: CreateInvoiceItemRequest[];
 }
+
+/**
+ * Summarized invoice data returned by the server-side paginated listing
+ * (`GET /api/invoices/paged`). Carries the same header fields as `Invoice`
+ * but exposes `itemsCount` instead of the full item list, matching
+ * `Billing.Api`'s `InvoiceSummaryResponse`.
+ */
+export interface InvoiceSummary {
+  readonly id: number;
+  readonly number: number;
+  readonly status: InvoiceStatus;
+  readonly createdAtUtc: string;
+  readonly closedAtUtc: string | null;
+  readonly itemsCount: number;
+}
+
+/**
+ * Fields Billing.Api accepts as `sortBy` on `GET /api/invoices/paged`. Kept
+ * in sync with `InvoiceService.GetPagedAsync` on the backend (case-sensitive
+ * as sent; the backend itself lower-cases before comparing).
+ */
+export type InvoiceSortField = 'number' | 'createdAtUtc' | 'itemsCount' | 'status';
+
+export const INVOICE_SORT_FIELDS: readonly InvoiceSortField[] = [
+  'number',
+  'createdAtUtc',
+  'itemsCount',
+  'status',
+];
+
+/** Default sort applied by Billing.Api when none is specified: most recent invoices first. */
+export const DEFAULT_INVOICE_SORT_FIELD: InvoiceSortField = 'number';

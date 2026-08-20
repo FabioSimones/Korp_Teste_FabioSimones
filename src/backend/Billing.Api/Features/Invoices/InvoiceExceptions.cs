@@ -9,7 +9,7 @@ public class InvoiceValidationException : Exception
     public IReadOnlyCollection<string> Errors { get; }
 
     public InvoiceValidationException(IEnumerable<string> errors)
-        : base("Invalid invoice data.")
+        : base("Dados da nota fiscal inválidos.")
     {
         Errors = errors.ToList();
     }
@@ -23,7 +23,7 @@ public class InvoiceNotFoundException : Exception
     public int Id { get; }
 
     public InvoiceNotFoundException(int id)
-        : base($"Invoice '{id}' was not found.")
+        : base("Nota fiscal não encontrada.")
     {
         Id = id;
     }
@@ -38,7 +38,7 @@ public class InvoiceProductNotFoundException : Exception
     public int ProductId { get; }
 
     public InvoiceProductNotFoundException(int productId)
-        : base($"Product '{productId}' was not found in the Inventory service.")
+        : base("Produto não encontrado.")
     {
         ProductId = productId;
     }
@@ -53,9 +53,24 @@ public class InvoiceProductNotFoundException : Exception
 public class DuplicateInvoiceNumberException : Exception
 {
     public DuplicateInvoiceNumberException()
-        : base("Invoice number conflict.")
+        : base("Conflito na numeração da nota fiscal. Tente novamente.")
     {
     }
+}
+
+/// <summary>
+/// Distinguishes why <see cref="InventoryServiceUnavailableException"/> was
+/// raised, so the HTTP layer can report a more specific
+/// <c>errorCode</c> (<c>INVENTORY_TIMEOUT</c> vs <c>INVENTORY_UNAVAILABLE</c>)
+/// while both still map to the same HTTP 503 status.
+/// </summary>
+public enum InventoryUnavailableReason
+{
+    /// <summary>Unreachable, refused the connection, circuit open, or returned an unexpected/invalid response.</summary>
+    Unavailable,
+
+    /// <summary>The resilience pipeline's per-attempt or total timeout tripped.</summary>
+    Timeout,
 }
 
 /// <summary>
@@ -66,14 +81,18 @@ public class DuplicateInvoiceNumberException : Exception
 /// </summary>
 public class InventoryServiceUnavailableException : Exception
 {
-    public InventoryServiceUnavailableException(string message)
+    public InventoryUnavailableReason Reason { get; }
+
+    public InventoryServiceUnavailableException(string message, InventoryUnavailableReason reason = InventoryUnavailableReason.Unavailable)
         : base(message)
     {
+        Reason = reason;
     }
 
-    public InventoryServiceUnavailableException(string message, Exception innerException)
+    public InventoryServiceUnavailableException(string message, Exception innerException, InventoryUnavailableReason reason = InventoryUnavailableReason.Unavailable)
         : base(message, innerException)
     {
+        Reason = reason;
     }
 }
 
@@ -87,9 +106,41 @@ public class InvoiceAlreadyClosedException : Exception
     public int Id { get; }
 
     public InvoiceAlreadyClosedException(int id)
-        : base($"Invoice '{id}' is already closed.")
+        : base("Esta nota fiscal já foi fechada.")
     {
         Id = id;
+    }
+}
+
+/// <summary>
+/// Thrown when the pagination parameters for a paged listing are invalid
+/// (page number less than 1, or page size outside the allowed range).
+/// Maps to HTTP 400.
+/// </summary>
+public class InvalidPaginationException : Exception
+{
+    public IReadOnlyCollection<string> Errors { get; }
+
+    public InvalidPaginationException(IEnumerable<string> errors)
+        : base("Parâmetros de paginação inválidos.")
+    {
+        Errors = errors.ToList();
+    }
+}
+
+/// <summary>
+/// Thrown when the sort parameters for a paged listing are invalid: an
+/// unsupported <c>sortBy</c> field, or a <c>sortDirection</c> other than
+/// <c>asc</c>/<c>desc</c>. Maps to HTTP 400.
+/// </summary>
+public class InvalidSortException : Exception
+{
+    public IReadOnlyCollection<string> Errors { get; }
+
+    public InvalidSortException(IEnumerable<string> errors)
+        : base("Parâmetros de ordenação inválidos.")
+    {
+        Errors = errors.ToList();
     }
 }
 

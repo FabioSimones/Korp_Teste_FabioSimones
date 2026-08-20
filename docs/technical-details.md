@@ -548,3 +548,875 @@ mas emite um `WARNING` de orçamento de bundle:
   (fora do escopo do desafio). Detalhamento de cada uma nas seções correspondentes acima e no
   README (seção "Limitações conhecidas").
 
+## Direção visual — Folha de Trabalho (evolução ad-hoc, exclusivamente visual)
+
+Evolução puramente visual do frontend, solicitada diretamente pelo usuário (não é uma task
+numerada de `docs/tasks/` nem reabre a Task 13). Nenhum contrato HTTP, DTO, rota ou regra de
+negócio foi alterado; nenhum arquivo de backend foi tocado (confirmado por `git status --short`
+antes e depois — apenas caminhos sob `src/frontend/invoice-web` e este documento aparecem no
+diff). Referência: mockup de um ERP fiscal sóbrio e técnico ("Folha de Trabalho").
+
+### Tokens (custom properties globais, `src/styles.scss`, bloco `:root`)
+
+| Token | Valor | Uso |
+| --- | --- | --- |
+| `--color-bg-app` | `#e6e6e8` | Fundo cinza-claro por trás de todo o app |
+| `--color-bg-paper` | `#ffffff` | Área central "papel" (topbar e conteúdo) |
+| `--color-ink` | `#1d2d3d` | Texto principal |
+| `--color-ink-secondary` | `#566270` | Texto auxiliar/legenda (levemente escurecido em relação à referência `#66717c` — ambos passam WCAG AA ≥4.5:1 sobre branco; o valor final foi mantido próximo do original) |
+| `--color-action` | `#4f7699` | Ações primárias (nav ativa, botões, foco) — escurecido a partir do `#5980a6` da referência para garantir 4.5:1 tanto como texto sobre branco quanto como texto branco sobre o próprio fundo (o tom original ficava em ~4.15:1, abaixo do AA para texto normal) |
+| `--color-action-strong` | `#3f6280` | Variante mais escura (ex.: índice do item na nota) |
+| `--color-action-tint` | `#edf4fa` | Fundo de seleção/hover (valor da referência, inalterado — só usado como fundo, não como texto) |
+| `--color-border` | `#d7d9dc` | Bordas finas |
+| `--color-success` / `--color-success-bg` | `#2f6b55` / `#eaf3ef` | Badge "Aberta" |
+| `--color-warning` / `--color-warning-bg` | `#946515` / `#faf1e3` | Alerta de impressão (irreversibilidade) |
+| `--color-error` / `--color-error-bg` | `#963b3b` / `#f8ecec` | Mensagens de erro/validação |
+| `--font-heading` | `'Bahnschrift Condensed', 'Arial Narrow', 'Segoe UI Semibold', Arial, sans-serif` | Títulos (`h1`/`h2`/`h3`, marca) — pilha local, sem `@font-face` |
+| `--font-body` | `'Segoe UI', Inter, Roboto, Arial, sans-serif` | Corpo do texto |
+| `--font-mono` | `'Roboto Mono', 'Consolas', monospace` | Dados técnicos (código de produto, números de nota, quantidades) |
+
+Todos os componentes consomem essas variáveis; nenhum hex novo foi espalhado pelos templates.
+
+### Angular Material: token override oficial, sem `::ng-deep`
+
+`html { @include mat.theme(...) }` continua definindo a paleta `azure`/`blue` (decisão já registrada
+em `docs/architecture.md`). Para o visual sóbrio ("cantos pouco arredondados, sem pílulas, sem
+sombra"), foram usados os mixins oficiais de override de tokens do Angular Material 21
+(`mat.card-overrides`, `mat.button-overrides`, `mat.form-field-overrides`), também dentro do bloco
+`html { }` em `src/styles.scss` — API pública documentada, sem `::ng-deep` e sem depender de nomes
+de classe internos (`.mat-mdc-*`). Isso reduz a elevação/sombra dos `mat-card` e achata os cantos
+dos botões e campos (4px) sem tocar em internals.
+
+**Decisão deliberada — tabelas de listagem sem `MatTableModule`:** para evitar depender de
+classes internas do Angular Material (`.mat-mdc-header-cell`, `.mat-mdc-row`, etc.) — que exigiriam
+`::ng-deep` ou seletores globais acoplados a internals para restilizar (cabeçalho caixa-alta,
+divisórias só horizontais) — as listagens de produtos (`ProductsPage`), notas
+(`InvoicesListPage`) e itens da nota (`InvoiceDetailPage`) passaram a usar `<table>` HTML semântico
+puro, estilizado pela classe utilitária compartilhada `.data-table` (`src/styles.scss`). Mesma
+estrutura de dados e colunas de antes; só a implementação de apresentação mudou. `MatTableModule`
+foi removido dos `imports` desses três componentes (não mais usado). `InvoicePrintView` não foi
+tocado (já usava HTML puro).
+
+### Shell (`src/app/layout/shell`)
+
+Reescrito de `mat-sidenav-container` (drawer lateral, `BreakpointObserver`/`isHandset`, ícones) para
+uma barra de navegação superior fixa sem drawer em nenhum breakpoint:
+
+- `Shell` não injeta mais `BreakpointObserver` (não há mais lógica de abrir/fechar menu — a
+  responsividade é só CSS/`@media`). `MatSidenavModule`, `MatListModule`, `MatIconModule` e
+  `MatButtonModule` foram removidos dos `imports` (não usados no novo template).
+- Marca "KORP ERP" (`.app-shell__brand-name`) + subtítulo "Fiscal" (`.app-shell__brand-tag`) à
+  esquerda; navegação com exatamente dois links, "Produtos" e "Notas fiscais", à direita
+  (`.app-shell__nav`), usando `routerLinkActive` + `[ariaCurrentWhenActive]="'page'"` (rota ativa
+  ganha `aria-current="page"`, texto mais forte e borda inferior azul-aço).
+- Conteúdo renderizado dentro de `.app-shell__paper` (fundo branco, borda fina, `max-width: 1040px`,
+  centralizado), sobre `.app-shell__content` com fundo cinza (`--color-bg-app`) herdado do body.
+- Responsivo só via `@media (max-width: 768px)` (margens reduzidas) e `@media (max-width: 599px)`
+  (marca e navegação empilham em duas linhas, sem esconder nenhum link); `.app-shell__nav-link` tem
+  `min-height: 44px` para alvo de toque adequado em mobile.
+
+### Rotas — comportamento visual por tela
+
+1. **`/produtos`**: `h1` "Produtos" + subtítulo curto; formulário e listagem continuam dois módulos
+   (`mat-card`) na mesma página (nunca modal); listagem trocada para `.data-table`; loading, vazio,
+   erro com retry e submissão preservados sem alteração de lógica (`products-page.ts` só perdeu o
+   campo `displayedColumns`, não mais necessário).
+2. **`/notas`**: título alterado de "Notas" para "Notas fiscais" + subtítulo "Emissão e impressão de
+   notas"; botão alterado de "Nova nota" para "Nova nota fiscal"; tabela ganhou uma coluna nova
+   "Itens" (`invoice.items.length`, dado já presente na resposta de `GET /api/invoices`, sem
+   chamada HTTP adicional — confirmado em `Billing.Api/Features/Invoices/InvoiceService.cs`,
+   `GetAllAsync` já projeta `Items` para cada nota da listagem); badges "Aberta"/"Fechada" com texto
+   explícito preservados (`InvoiceStatusBadge`, só CSS alterado). **Correção de acessibilidade**: a
+   linha da tabela, antes clicável só via `[routerLink]` num `<tr>` (sem foco de teclado), agora tem
+   `tabindex="0"`, `role="link"`, `aria-label` com o número da nota e navega tanto por clique quanto
+   por `Enter`/`Espaço` (`InvoicesListPage.openInvoice`/`onRowKeydown`, usando `Router.navigate`
+   diretamente em vez de `routerLink` no `<tr>`, já que `<tr>` não é um elemento focável nativo).
+3. **`/notas/nova`**: `h1` alterado de "Nova nota" para "Nova nota fiscal"; cada item do
+   `FormArray` ganhou um índice numérico visual (`.invoice-form-page__item-index`) e passou a ser
+   um módulo com borda própria (fundo `--color-bg-app`, borda `--color-border`); `FormArray`,
+   validação de duplicidade (`duplicateProductsValidator`), quantidade mínima/inteira, remoção de
+   item, mensagens de erro (400/404/409/503) e navegação pós-cadastro não foram tocados no
+   componente (`invoice-form-page.ts` inalterado, exceto pela troca de tokens de cor CSS).
+4. **`/notas/:id`**: reescrita mais próxima da referência — rótulo pequeno "Nota fiscal"
+   (`.invoice-detail-page__eyebrow`), número em destaque com fonte monoespaçada
+   (`.invoice-detail-page__number`, ex. "Nº 42"), badge de status posicionado no canto superior
+   direito do bloco do documento (`.invoice-detail-page__document-header`, `justify-content:
+   space-between`), nova linha de resumo "Itens" com a contagem (`loadedInvoice.items.length`, já
+   carregado pela mesma chamada `GET /api/invoices/{id}`, sem HTTP adicional). Botão alterado de
+   "Imprimir" para "Imprimir e fechar nota" (mesmo `(click)="print()"`, mesmo guard de clique
+   duplicado, mesmo `[disabled]`). Novo alerta discreto, visível somente enquanto `canPrint()` é
+   verdadeiro (nota `Open`): "Imprimir fecha a nota e realiza a baixa no estoque. A ação não pode
+   ser desfeita." (`.invoice-detail-page__notice`, borda esquerda grossa em `--color-warning`).
+   Tabela de itens trocada para `.data-table` (mesmas colunas: código, descrição, quantidade).
+   `InvoiceDetailPage.print()`/`handlePrintSuccess`/`handlePrintError`/`loadInvoice` não foram
+   alterados: guard síncrono contra clique duplicado, mapeamento de erros 404/409/503/0 e
+   `window.print()` disparado só dentro de `handlePrintSuccess` (ou seja, só após a resposta 200 de
+   `POST /api/invoices/{id}/print`) continuam exatamente como antes.
+5. **Impressão (`InvoicePrintView`)**: componente e comportamento preservados integralmente (não
+   editado nesta task) — continua `display: none` na tela e `display: block` só em `@media print`,
+   mostrando número, status, datas e a tabela de itens em HTML/CSS simples. O que mudou foi a regra
+   global de impressão em `src/styles.scss`: antes escondia `.shell__sidenav`/`.shell__toolbar`
+   (classes que não existem mais); agora esconde `.app-shell__topbar` (nova barra superior) e reseta
+   `.app-shell__paper`/`body` para fundo branco sem margens/bordas dentro de `@media print`, para
+   que `window.print()` não vaze o fundo cinza da aplicação nem a navegação — mesmo objetivo do
+   código anterior, adaptado à nova estrutura de shell. Mantido o único `!important` do arquivo,
+   necessário tecnicamente para garantir que a regra de impressão vença qualquer estilo de tela.
+6. **404 (`NotFound`)**: mesma identidade visual (tokens, papel/fundo herdados do shell), rótulo
+   "Erro 404" adicionado, mensagem e link "Voltar ao início" preservados (`#not-found-title` e
+   `a[routerLink="/"]` inalterados, cobertos pelos testes existentes sem modificação).
+
+### Acessibilidade
+
+- Um único `h1` por rota, mantido em todas as telas.
+- Nova marcação `aria-current="page"` na rota ativa da navegação superior (`ariaCurrentWhenActive`
+  do `RouterLinkActive`), testada em `shell.spec.ts`.
+- Linhas de tabela clicáveis (`/notas`) acessíveis por teclado (`tabindex="0"`, `role="link"`,
+  `aria-label`, ativação por `Enter`/`Espaço`), testado em `invoices-list-page.spec.ts`.
+- Foco visível customizado (`:focus-visible`) nos links de navegação e linhas de tabela clicáveis,
+  usando `--color-action` como cor de contorno.
+- Badges de status continuam com texto explícito ("Aberta"/"Fechada"), não só cor.
+- `prefers-reduced-motion` não foi afetado (nenhuma animação nova foi introduzida; o app já não
+  usava animações customizadas além das transições padrão do Material).
+
+### Testes
+
+Nenhum assert funcional foi enfraquecido. Testes atualizados (mudança de seletor/texto por causa da
+reestruturação visual, sem alterar o que é verificado) e novos:
+
+- `shell.spec.ts`: reescrito — removidas as verificações de `mat-list-item`/sidenav; adicionadas
+  verificações de marca, exatamente dois links de navegação, ausência de `mat-sidenav`/drawer, e
+  `aria-current="page"` na rota ativa.
+- `products-page.spec.ts`: seletor de linhas de tabela `tr[mat-row]` → `tbody tr` (troca de
+  `mat-table` por `<table>` simples); nenhum outro assert alterado.
+- `invoices-list-page.spec.ts`: título esperado `'Notas'` → `'Notas fiscais'`; novo teste para o
+  texto do botão "Nova nota fiscal"; seletor de linhas `tr[mat-row]` → `tbody tr`; dois testes novos
+  para navegação da linha por clique e por teclado (`Enter`).
+- `invoice-form-page.spec.ts`: título esperado `'Nova nota'` → `'Nova nota fiscal'`.
+- `invoice-detail-page.spec.ts`: seletor de linhas de itens restrito a
+  `.invoice-detail-page__table-wrapper tbody tr` (a página agora também contém a tabela oculta do
+  `InvoicePrintView`, que também usa `<table>`, então o seletor precisou ser escopado para não
+  contar as duas tabelas); dois testes novos para o alerta de impressão irreversível (presente
+  quando `Open`, ausente quando `Closed`); um teste novo para a contagem de itens no resumo.
+
+Resultado: **66/66 testes** (58 originais preservados/ajustados por seletor + 8 novos), `0` falhas.
+
+### Resultado da validação técnica (frontend, `src/frontend/invoice-web`)
+
+| Comando | Resultado |
+| --- | --- |
+| `npm run format:check` | `All matched files use Prettier code style!` |
+| `npm run lint` | `ESLint: No issues found` |
+| `npm test` | `11 arquivos, 66/66 testes, 0 falhas` |
+| `npm run build` | Sucesso — initial bundle `446.27 kB` raw / `114.32 kB` transferência estimada |
+
+### Resultado da validação técnica (backend, confirmando ausência de efeito colateral)
+
+| Comando | Resultado |
+| --- | --- |
+| `dotnet build src/backend/Korp.sln --configuration Release` | `5 projetos, 0 erros, 0 avisos` |
+| `dotnet test src/backend/Korp.sln --configuration Release` | `Inventory.Tests` 55/55, `Billing.Tests` 61/61 — `116/116` |
+
+`git status --short` antes e depois do backend build/test não mostrou nenhum arquivo sob
+`src/backend`/`tests` alterado — nenhum efeito colateral no backend.
+
+### Limitações desta evolução visual
+
+- Validação visual em navegador real (1440×900, 1280×720, 768×1024, 390×844, 360×800) **não foi
+  executada** neste ambiente (sem ferramenta de automação de navegador/screenshot disponível para
+  este agente); a revisão foi feita por leitura estrutural de template/CSS e pelos testes
+  automatizados (estrutura DOM, classes, `aria-current`, foco). Fica pendente uma validação manual
+  humana ou de uma ferramenta de browser externa nos breakpoints listados.
+- Ajuste de tom em `--color-action`/`--color-ink-secondary` em relação aos valores exatos da
+  referência (`#5980a6`/`#66717c`) foi uma decisão de contraste (WCAG AA), documentada na tabela de
+  tokens acima; visualmente o tom permanece o mesmo azul-aço/cinza-azulado.
+- `mat-raised-button` (botão "Imprimir e fechar nota") manteve a elevação/sombra padrão do Material
+  para esse variante ("protected") — o token de elevação correspondente
+  (`protected-container-elevation-shadow`) não foi sobrescrito nesta rodada (só o formato do canto);
+  o efeito visual é pequeno (o botão já não tem canto arredondado nem cor fora da paleta) e não
+  compromete a leitura da tela como "documento administrativo".
+
+## Paginação server-side (Produtos e Notas)
+
+Adiciona listagens paginadas em `Inventory.Api` e `Billing.Api` sem alterar os endpoints
+existentes, que continuam sendo consumidos pelo Angular (o formulário de nova nota carrega as
+opções de produto via `GET /api/products` sem paginação).
+
+### Decisão de compatibilidade
+
+- `GET /api/products`, `GET /api/products/{id}`, `POST /api/products`, `GET /api/invoices`,
+  `GET /api/invoices/{id}`, `POST /api/invoices` e `POST /api/invoices/{id}/print` permanecem
+  intocados: mesma rota, mesmo formato de resposta (array simples ou objeto único), mesmo
+  comportamento e mesmos DTOs de antes desta evolução.
+- Dois endpoints novos e independentes foram adicionados para paginação:
+  - `GET /api/products/paged?pageNumber={n}&pageSize={m}&sortBy={campo}&sortDirection={asc|desc}`
+    (`Inventory.Api`)
+  - `GET /api/invoices/paged?pageNumber={n}&pageSize={m}&sortBy={campo}&sortDirection={asc|desc}`
+    (`Billing.Api`)
+- `sortBy`/`sortDirection` foram adicionados a esses dois endpoints já existentes (não é um
+  terceiro endpoint novo). Ambos têm defaults e continuam funcionando sem esses parâmetros — ver
+  "Ordenação configurável" abaixo.
+- Nenhuma migration foi necessária: a paginação e a ordenação operam sobre colunas já existentes
+  (`products.code`/`description`/`balance`/`id`, `invoices.number`/`created_at_utc`/`status`/`id`,
+  além do `COUNT` correlacionado sobre `invoice_items` para `itemsCount`).
+
+### Contrato `PagedResponse<T>`
+
+Cada microsserviço define sua própria versão local do envelope (`Inventory.Api/Common/PagedResponse.cs`
+e `Billing.Api/Common/PagedResponse.cs`), deliberadamente **não** compartilhada entre os dois
+serviços (nenhum projeto/biblioteca comum foi criado, preservando a autonomia de cada
+microsserviço). Ambas têm o mesmo formato JSON:
+
+```json
+{
+  "items": [ /* ProductResponse[] ou InvoiceSummaryResponse[] */ ],
+  "pageNumber": 1,
+  "pageSize": 5,
+  "totalCount": 0,
+  "totalPages": 0,
+  "hasPreviousPage": false,
+  "hasNextPage": false
+}
+```
+
+`totalPages` é `Ceiling(totalCount / pageSize)`, e `0` quando `totalCount` é `0`. `PagedResponse<T>.Create`
+centraliza esse cálculo e a derivação de `hasPreviousPage`/`hasNextPage` a partir de `pageNumber` e
+`totalPages`.
+
+### Validação de `pageNumber`/`pageSize`
+
+Implementada na camada de serviço (`ProductService.GetPagedAsync` / `InvoiceService.GetPagedAsync`),
+nunca no controller:
+
+- `pageNumber` padrão `1`, `pageSize` padrão `5` quando omitidos na query string (`[FromQuery] int
+  pageNumber = 1, [FromQuery] int pageSize = 5` em `ProductsController.GetPaged`/
+  `InvoicesController.GetPaged`). O backend não está limitado às opções do seletor do frontend
+  (`5`/`10`/`25`/`50`): qualquer valor entre `1` e `100` continua sendo aceito quando informado
+  explicitamente.
+- `pageNumber < 1` → 400.
+- `pageSize < 1` ou `pageSize > 100` → 400.
+- Ambas as violações lançam `InvalidPaginationException` (uma classe por serviço, seguindo o padrão
+  já usado para as demais exceções de domínio), capturada pelo controller e traduzida em
+  `ValidationProblemDetails` com `Errors["pagination"]` e `Extensions["traceId"]`, no mesmo padrão
+  de `ProductValidationException`/`InvoiceValidationException`.
+- Página além do total de páginas retorna 200 com `items` vazio e os metadados corretos (não 404).
+- Coleção vazia retorna `totalCount = 0` e `totalPages = 0`.
+
+### Consulta e ordenação
+
+- `ProductService.GetPagedAsync`: `CountAsync` para o total; ordenação configurável (ver seção
+  seguinte) aplicada **antes** de `Skip`/`Take` (`src/backend/Inventory.Api/Features/Products/ProductService.cs`,
+  bloco `IQueryable<Product> orderedQuery = (sortBy, ascending) switch { ... }` seguido de
+  `.Skip(...).Take(...)`); projeção (`Select`) para `ProductResponse` **depois** da ordenação e da
+  paginação, nunca antes — nenhuma materialização antecipada da lista completa. Nunca carrega a
+  tabela inteira em memória.
+- `InvoiceService.GetPagedAsync`: `CountAsync` para o total; ordenação configurável aplicada antes
+  de `Skip`/`Take` (`src/backend/Billing.Api/Features/Invoices/InvoiceService.cs`, mesmo padrão de
+  `switch` sobre `IQueryable<Invoice>`); projeção direta para `InvoiceSummaryResponse` — que expõe
+  `ItemsCount` (traduzido pelo EF Core Npgsql para um `COUNT` correlacionado no SQL, via
+  `i.Items.Count`, tanto no `OrderBy`/`OrderByDescending` quanto no `Select`) em vez da lista
+  completa de itens, evitando carregar as linhas de `invoice_items` de cada nota da página e sem
+  gerar consultas N+1 (uma única consulta com subquery de `COUNT`, confirmada pelos testes de
+  integração que ordenam por `itemsCount`). A listagem paginada de notas é somente leitura do
+  próprio banco do `Billing.Api` e não dispara nenhuma chamada HTTP a `Inventory.Api` (diferente de
+  `CreateAsync`/`PrintAsync`, que dependem do Estoque) — inclusive quando ordenada por qualquer
+  campo, incluindo `itemsCount`.
+- Em ambos os casos, `Id` é sempre o critério de desempate final, em **todo** ramo do `switch`
+  (mesmo para campos já únicos como `Number`), garantindo ordenação determinística: a mesma
+  entidade nunca aparece em duas páginas diferentes, e a ordem nunca é "sem critério" mesmo diante
+  de valores repetidos no campo primário de ordenação (ex.: vários produtos com o mesmo `Balance`).
+- `AsNoTracking()` em todas as consultas de leitura, seguindo o padrão já adotado nos demais
+  endpoints `GET`.
+
+### Ordenação configurável (`sortBy`/`sortDirection`)
+
+- **Campos aceitos — Produtos** (`Inventory.Api`): `code` (default), `description`, `balance`.
+- **Campos aceitos — Notas** (`Billing.Api`): `number` (default), `createdAtUtc`, `itemsCount`,
+  `status`.
+- **Direções aceitas**: `asc`, `desc`. Default de `sortDirection`: `asc` para Produtos, `desc` para
+  Notas (mantém o comportamento pré-existente do endpoint quando chamado sem parâmetros).
+- Entrada aceita case-insensitive (`CODE`, `Desc` etc. são normalizados com `Trim().ToLowerInvariant()`
+  antes da comparação), mas a validação em si **não** faz parsing "solto": o valor normalizado é
+  comparado contra uma lista literal e explícita de valores permitidos (`sortBy is not ("code" or
+  "description" or "balance")` em Produtos; equivalente em Notas), e a ordenação em si é resolvida
+  por um `switch` de expressão sobre tuplas `(sortBy, ascending)` com um caso por combinação válida
+  de campo/direção — nunca reflection, nunca Dynamic LINQ, nunca concatenação de SQL. O ramo `_ =>`
+  do `switch` lança `InvalidSortException` como rede de segurança, mas é inalcançável em prática
+  porque a validação de entrada já rejeitou qualquer valor fora da lista antes de chegar ali.
+- Parâmetro inválido (`sortBy` fora da lista, ou `sortDirection` diferente de `asc`/`desc`) → HTTP
+  400 com `ValidationProblemDetails`, `Errors["sort"]` contendo as mensagens em português ("O campo
+  de ordenação informado não é válido." / "A direção de ordenação deve ser 'asc' ou 'desc'."),
+  `Extensions["traceId"]` preservado e `Extensions["errorCode"] = "INVALID_SORT"`, no mesmo padrão
+  já usado por `InvalidPaginationException`/`errorCode = "INVALID_PAGINATION"`.
+- `InvalidSortException` (uma classe por serviço, seguindo o padrão das demais exceções de domínio)
+  é lançada pela camada de serviço, nunca no controller, e capturada em
+  `ProductsController.GetPaged`/`InvoicesController.GetPaged` para ser traduzida em
+  `ValidationProblemDetails`.
+- O envelope `PagedResponse<T>` **não** foi alterado: ele não ecoa `sortBy`/`sortDirection` de
+  volta (assim como já não ecoava `pageNumber`/`pageSize` recebidos além dos já existentes campos
+  de metadados), então nenhum campo novo foi adicionado à resposta além do que já existia.
+- Chamar `GET /api/products/paged`/`GET /api/invoices/paged` sem `sortBy`/`sortDirection` continua
+  funcionando exatamente como antes desta mudança (mesmos defaults de ordenação já documentados
+  acima), preservando o contrato do endpoint pré-existente.
+
+### DTOs novos
+
+- `Inventory.Api`: `ProductsPageQuery(int PageNumber, int PageSize, string? SortBy = null, string?
+  SortDirection = null)` (parâmetros de entrada); reusa `ProductResponse` já existente para os itens
+  da página.
+- `Billing.Api`: `InvoicesPageQuery(int PageNumber, int PageSize, string? SortBy = null, string?
+  SortDirection = null)` (parâmetros de entrada); `InvoiceSummaryResponse(int Id, int Number, string
+  Status, DateTime CreatedAtUtc, DateTime? ClosedAtUtc, int ItemsCount)` — resumo por nota, sem a
+  lista completa de itens.
+- `InvalidSortException` (uma classe por serviço, análoga a `InvalidPaginationException`): carrega
+  `IReadOnlyCollection<string> Errors` e mapeia para HTTP 400 / `errorCode = "INVALID_SORT"`.
+
+### Testes
+
+- `tests/Inventory.Tests/ProductsPagedApiTests.cs`: parâmetros padrão, `pageSize` específico,
+  primeira/intermediária/última página, página além do total, coleção vazia, ausência de
+  duplicidade/lacuna ao varrer todas as páginas (ordenação por `Code`), `pageNumber`/`pageSize`
+  inválidos (400), limite superior de `pageSize` (100 aceito, 101 rejeitado), confirmação de que
+  `GET /api/products` sem paginação continua com o mesmo contrato (array simples), e — para a
+  ordenação configurável — default (`code` asc) sem parâmetros, `code` desc, `description` asc/desc,
+  `balance` asc/desc, `sortBy`/`sortDirection` case-insensitive, desempate determinístico e estável
+  entre chamadas para produtos com `balance` duplicado, ordenação aplicada antes da paginação
+  (segunda página de uma listagem ordenada retorna exatamente os itens esperados), e `sortBy`/
+  `sortDirection` inválidos → 400 com `errorCode = INVALID_SORT` no corpo da resposta.
+- `tests/Billing.Tests/InvoicesPagedApiTests.cs`: parâmetros padrão, `pageSize` específico,
+  metadados (`totalCount`/`totalPages`/`hasPreviousPage`/`hasNextPage`), ordenação por `Number`
+  decrescente, página além do total, coleção vazia, parâmetros inválidos (400), confirmação de que
+  `GET /api/invoices` sem paginação continua com o mesmo contrato, confirmação de que a listagem
+  paginada não altera o estado de nenhuma nota (nota recuperada por id continua `Open`/inalterada
+  após chamadas à listagem paginada), confirmação — via
+  `tests/Billing.Tests/CountingInventoryProductClient.cs`, um novo test double que conta chamadas —
+  de que a listagem paginada nunca invoca `IInventoryProductClient` (isto é, nenhuma chamada HTTP a
+  `Inventory.Api`), e — para a ordenação configurável — default (`number` desc) sem parâmetros,
+  `number` asc, `createdAtUtc` asc/desc, `itemsCount` asc/desc (com notas de 1/2/3 itens, produto
+  repetido entre linhas), `status` (determinístico via desempate por `Id`), `sortBy`/`sortDirection`
+  case-insensitive, ordenação aplicada antes da paginação, ausência de chamada ao Inventory mesmo ao
+  ordenar por `itemsCount`, e `sortBy`/`sortDirection` inválidos → 400 com `errorCode = INVALID_SORT`.
+- Ambas as suítes usam PostgreSQL real via Testcontainers, seguindo a convenção do projeto (sem
+  mocks para persistência).
+
+### Frontend (consumo da paginação server-side)
+
+Consome os dois endpoints `/paged` acima nas listagens de Produtos (`/produtos`) e Notas
+(`/notas`); o seletor de produtos do formulário de nova nota continua usando `GET /api/products`
+sem paginação (nenhuma mudança nesse fluxo).
+
+- **`PagedResponse<T>`** (`src/app/shared/pagination/paged-response.ts`): interface genérica
+  espelhando o envelope do backend, mais as constantes `PAGE_SIZE_OPTIONS` (`[5, 10, 25, 50]`) e
+  `DEFAULT_PAGE_NUMBER`/`DEFAULT_PAGE_SIZE` (`1`/`5`), reutilizadas tanto pelas páginas quanto pelos
+  componentes de paginação. Esse arquivo é a **única fonte de verdade** do `pageSize` padrão e das
+  opções permitidas no frontend: nenhum componente ou página mantém uma cópia própria desses valores.
+- **`ProductsService.getPaged(pageNumber, pageSize, sortBy, sortDirection)`** e
+  **`InvoicesService.getPaged(pageNumber, pageSize, sortBy, sortDirection)`** (`GET .../paged` com
+  `HttpParams`, incluindo `sortBy`/`sortDirection`): retornam
+  `Observable<PagedResponse<Product>>`/`Observable<PagedResponse<InvoiceSummary>>` respectivamente.
+  `InvoiceSummary` (`features/invoices/models/invoice.ts`) é um tipo novo e deliberadamente distinto
+  de `Invoice` — espelha `InvoiceSummaryResponse` do Billing.Api (`itemsCount` em vez da lista de
+  itens completa). Os métodos antigos (`getAll`, `create`, `getById`, `print`) foram preservados sem
+  alteração; `getAll()` de `ProductsService` continua sendo o único usado por
+  `InvoiceFormPage`/`ProductsService` para popular o seletor de produtos da nova nota.
+
+#### Tipos de ordenação (frontend)
+
+- **`SortDirection`** (`shared/pagination/sort.ts`): `'asc' | 'desc'`, genérico e compartilhado por
+  Produtos e Notas (não duplicado por feature). O mesmo arquivo expõe `toggleSortDirection` (inverte
+  `asc`↔`desc`, usado ao clicar de novo na coluna já ativa) e `resolveSort<TField>(rawSortBy,
+  rawSortDirection, validFields)`, uma função pura genérica que valida o par lido da URL contra a
+  lista de campos aceitos daquele recurso e retorna `null` quando qualquer um dos dois é
+  ausente/desconhecido (para a página cair no mesmo caminho de normalização já usado por
+  `page`/`pageSize`).
+- **`ProductSortField`** (`features/products/models/product.ts`): `'code' | 'description' |
+  'balance'`, com `PRODUCT_SORT_FIELDS` (lista de valores válidos) e `DEFAULT_PRODUCT_SORT_FIELD =
+  'code'`. Direção padrão: `asc`.
+- **`InvoiceSortField`** (`features/invoices/models/invoice.ts`): `'number' | 'createdAtUtc' |
+  'itemsCount' | 'status'`, com `INVOICE_SORT_FIELDS` e `DEFAULT_INVOICE_SORT_FIELD = 'number'`.
+  Direção padrão: `desc` (mantém o comportamento pré-existente de notas mais recentes primeiro).
+  Esses nomes de campo, e os defaults, foram conferidos byte a byte contra o que o backend
+  efetivamente aceita (`ProductService.GetPagedAsync`/`InvoiceService.GetPagedAsync`, ambos com 170
+  testes de integração próprios passando) — nenhuma divergência encontrada.
+
+#### Cabeçalhos de tabela ordenáveis
+
+Cada coluna ordenável (`Código`/`Descrição`/`Saldo` em Produtos; `Número`/`Emissão`/`Itens`/`Status`
+em Notas) é um `<th scope="col" [attr.aria-sort]="...">` contendo um `<button
+class="data-table__sort-button">` real (nunca uma `<div>` clicável), com o rótulo da coluna e um
+indicador `▲`/`▼` em um `<span aria-hidden="true">` separado — o indicador nunca depende só de cor,
+e o texto do rótulo continua acessível por leitor de tela mesmo com o glifo escondido dele:
+
+```html
+<th scope="col" [attr.aria-sort]="ariaSortFor('code')">
+  <button type="button" class="data-table__sort-button" (click)="changeSort('code')">
+    <span>Código</span>
+    <span aria-hidden="true">{{ sortIndicator('code') }}</span>
+  </button>
+</th>
+```
+
+- **Clique em uma coluna diferente da ativa**: seleciona essa coluna com direção `asc`, volta para
+  `page=1` (preservando `pageSize`) e atualiza a URL.
+- **Clique na coluna já ativa**: `toggleSortDirection` inverte `asc`↔`desc` (também reset para
+  `page=1`, preservando `pageSize`).
+- **`aria-sort`**: `"ascending"`/`"descending"` na coluna ativa (via `ariaSortFor`); nas demais,
+  `[attr.aria-sort]` recebe `null`, que o Angular traduz para a **ausência** do atributo (nunca
+  `"none"` textual, mas semanticamente equivalente — nenhum leitor de tela distingue "atributo
+  ausente" de `aria-sort="none"`).
+- **Teclado**: por ser um `<button>` nativo sem `preventDefault()` no `click`, Enter/Espaço
+  funcionam via comportamento padrão do navegador — nenhum handler de teclado extra foi necessário.
+- **Sem interferência com a navegação de linha (Notas)**: o `(click)` que abre o detalhe da nota
+  está no `<tr>` de `<tbody>`; os botões de ordenação vivem em `<thead>`, uma subárvore do DOM
+  completamente diferente — não há bubbling possível entre as duas, então clicar num cabeçalho nunca
+  aciona `openInvoice`.
+- **Estilo** (`.data-table__sort-button`, `src/styles.scss`, ao lado das demais regras de
+  `.data-table`): reseta a aparência de botão (sem borda/fundo próprios) para continuar parecendo um
+  cabeçalho de tabela comum, mas preserva `:focus-visible` com contorno visível.
+
+#### Sincronização com query params da rota
+
+Implementada de forma idêntica em `ProductsPage` e `InvoicesListPage`. Cada página injeta
+`ActivatedRoute`/`Router` e assina `route.queryParamMap` (via `takeUntilDestroyed`) como única fonte
+de verdade — não existe um segundo caminho de código que dispare a chamada HTTP. Sempre que essa
+assinatura emite: se `page` não é um inteiro ≥ 1, ou `pageSize` não é um dos valores permitidos
+(`5`/`10`/`25`/`50`), ou o par `sortBy`/`sortDirection` não passa em `resolveSort` (campo fora da
+lista permitida daquele recurso, ou direção diferente de `asc`/`desc`) — qualquer um desses quatro
+parâmetros ausente ou inválido faz a página normalizar **todos os quatro** de uma vez para os
+defaults, via `router.navigate([], { queryParams: { page: 1, pageSize: 5, sortBy: <default>,
+sortDirection: <default> }, replaceUrl: true })`, e retorna sem carregar dados; caso contrário,
+atualiza os signals `pageNumber`/`pageSize`/`sortBy`/`sortDirection` e chama o serviço paginado com
+os quatro valores. Os botões de paginação, o seletor de tamanho de página e os cabeçalhos ordenáveis
+nunca mutam o estado diretamente: todos disparam `router.navigate([], { queryParams: {...},
+replaceUrl: false })` com os quatro parâmetros sempre presentes, que por sua vez reemite
+`queryParamMap` e aciona o mesmo caminho único de carregamento — evitando dois caminhos divergentes
+(clique vs. URL) para o mesmo efeito, e evitando uma segunda requisição disparada artificialmente
+durante a inicialização.
+
+**Ausência de loop**: a normalização só navega quando algum parâmetro é inválido; a navegação
+resultante já contém os quatro parâmetros válidos, então a reemissão subsequente de `queryParamMap`
+cai no ramo "carrega dados" e não dispara nova navegação. Trocar o tamanho de página ou a ordenação
+sempre navega para `page=1` preservando `pageSize` e, no caso da troca de página/tamanho, também
+preservando `sortBy`/`sortDirection` — em uma única navegação (uma `queryParamMap` → uma chamada ao
+serviço). Uma resposta cujo `items` vier vazio com `totalCount > 0` e `pageNumber > totalPages` (ex.:
+URL editada manualmente para uma página além do fim) reconduz para a última página válida via
+`replaceUrl: true`, preservando `sortBy`/`sortDirection`, em vez de mostrar um vazio enganoso.
+
+**Exemplos de URL reais**:
+
+- `/produtos?page=1&pageSize=5&sortBy=code&sortDirection=asc` (estado inicial normalizado)
+- `/produtos?page=2&pageSize=25&sortBy=balance&sortDirection=desc` (página 2, ordenado por saldo
+  decrescente)
+- `/notas?page=1&pageSize=5&sortBy=number&sortDirection=desc` (estado inicial normalizado)
+- `/notas?page=1&pageSize=10&sortBy=createdAtUtc&sortDirection=asc` (recém-selecionada a coluna
+  "Emissão", ascendente — sempre volta para `page=1`)
+
+**Back/forward do navegador**: como todo o estado (`pageNumber`/`pageSize`/`sortBy`/`sortDirection`)
+é derivado exclusivamente de `queryParamMap` — sem nenhum estado paralelo em memória que sobreviva a
+uma navegação — voltar/avançar no histórico restaura tabela, seletor, seta de ordenação e
+`aria-sort` "de graça", sem código adicional.
+
+#### Números de página com elipses (`Pagination` evoluído)
+
+- **Função pura testável** — `buildPageItems(currentPage, totalPages): (number | 'ellipsis')[]`
+  (`shared/pagination/page-items.ts`, tipo `PageItem`), sem nenhuma dependência de Angular/DOM,
+  coberta isoladamente por `page-items.spec.ts` (sem `TestBed`). `Pagination.pageItems` (getter)
+  apenas a invoca com `pageNumber`/`displayTotalPages` atuais.
+- **Algoritmo**: primeira e última página sempre incluídas quando existem; uma janela deslizante de
+  3 páginas centrada na atual (`[currentPage-1, currentPage, currentPage+1]`), recortada nos limites
+  do intervalo válido (`1..totalPages`) — é essa janela de 3 que garante que a página 1 de 20 mostre
+  `1 2 3 … 20` (não um esparso `1 2 … 20`) e a página 20 de 20 mostre `1 … 18 19 20`, simétrico ao
+  primeiro caso. Um intervalo de exatamente uma página entre dois números mostrados é preenchido com
+  essa própria página em vez de virar reticências (uma elipse por uma única página escondida lê
+  pior do que mostrá-la); intervalos maiores colapsam em um único item `'ellipsis'`. `totalPages <=
+  0` não produz itens; `totalPages === 1` produz `[1]`; poucas páginas (≤ ~5, dependendo de onde
+  está a página atual) tendem a mostrar todos os números sem nenhuma reticência.
+- **Exemplos conferidos em teste** (`page-items.spec.ts`): 4 páginas → `1 2 3 4`; 20 páginas na
+  página 1 → `1 2 3 … 20`; 20 páginas na página 10 → `1 … 9 10 11 … 20`; 20 páginas na página 20 →
+  `1 … 18 19 20`; 1000 páginas na página 500 → sempre 7 itens (`1 … 499 500 501 … 1000`), nunca
+  dezenas/centenas de botões.
+- **Renderização** (`pagination.html`): cada número não-elipse é um `<button class="pagination__page"
+  [class.pagination__page--current]="isCurrentPage(item)" [attr.aria-current]="... ? 'page' :
+  null">`; a página atual fica com `disabled` (não emite `pageChange` ao clicar nela — evita
+  recarregar dados já em tela) e um destaque visual próprio (`.pagination__page--current`, cor de
+  fundo/texto invertidos, nunca só negrito ou só cor); a elipse é um `<span class="pagination__ellipsis"
+  aria-hidden="true">…</span>`, nunca um `<button>` — não é focável/clicável, confirmado em teste.
+  `loading` desabilita todo botão de página (reaproveitando o mesmo `@Input()` que já desabilita
+  Anterior/Próxima), evitando disparos repetidos de navegação enquanto uma requisição está em voo.
+  Anterior/Próxima continuam existindo e inalterados na lógica (apenas ganharam classes modificadoras
+  `--previous`/`--next` para diferenciá-los visualmente dos números, sem trocar a classe base
+  `.pagination__button` que os testes das páginas hospedeiras já usavam).
+
+#### Posicionamento final dos controles (toolbar única, sem duplicação)
+
+O antigo rodapé de listagem (`<app-pagination>` depois da tabela) foi removido; `Pagination` agora
+vive **apenas** na toolbar, acima da tabela, junto de `PageSizeSelect` — nunca duplicado:
+
+```html
+<div class="products-page__list-toolbar">
+  <h2 class="products-page__list-title">Produtos cadastrados</h2>
+  <app-page-size-select
+    [pageSize]="pageSize()"
+    [loading]="loading()"
+    (pageSizeChange)="onPageSizeChange($event)"
+  />
+</div>
+
+@if (!loading() && !listError() && products().length > 0) {
+  <div class="products-page__pagination-top">
+    <app-pagination
+      [pageNumber]="pageNumber()"
+      [pageSize]="pageSize()"
+      [totalCount]="totalCount()"
+      [totalPages]="totalPages()"
+      [hasPreviousPage]="hasPreviousPage()"
+      [hasNextPage]="hasNextPage()"
+      [loading]="loading()"
+      (pageChange)="onPageChange($event)"
+    />
+  </div>
+}
+
+<!-- estados de loading/erro/vazio/tabela (com cabeçalhos ordenáveis) -->
+```
+
+`Pagination` continua exibindo o resumo "1–5 de 47 · Página 1 de 10" (via `<p class="pagination__summary"
+aria-live="polite">`) na mesma linha que os botões (`justify-content: space-between`, quebrando para
+duas linhas em telas estreitas via `flex-wrap: wrap`), então a informação de contagem não foi
+perdida ao mover a navegação para cima — apenas deixou de ter uma borda superior/`margin-top` de
+"rodapé" (removidos de `.pagination`, já que não separa mais nada abaixo de si). Testes de
+`products-page.spec.ts`/`invoices-list-page.spec.ts` confirmam a posição relativa (`<select>` e
+`.pagination` antes de `<table>` no DOM, via `compareDocumentPosition`) e a ausência de duplicação
+(`querySelectorAll('.pagination').length === 1`/`querySelectorAll('select').length === 1`).
+
+**Responsivo**: em telas estreitas (`max-width: 599px`), o toolbar
+(`.products-page__list-toolbar`/`.invoices-list-page__list-toolbar`) quebra em duas linhas (título
+acima, seletor abaixo) e `.pagination__buttons` permite quebra de linha (`flex-wrap: wrap`) em vez de
+transbordar horizontalmente — os botões de página (`.pagination__page`) e os de
+Anterior/Próxima/número mantêm a área clicável mínima de 44×44px já usada antes desta mudança. O
+algoritmo de elipses por si só já limita o número de botões renderizados em qualquer largura de tela
+(nunca dezenas/centenas), então não há necessidade de esconder números adicionalmente por media
+query.
+
+#### Comportamento pós-modal (ordenação preservada)
+
+- **Produtos**: `ProductsPage.openCreateDialog().afterClosed()` recarrega a página 1 preservando
+  tanto `pageSize` quanto `sortBy`/`sortDirection` atuais (antes desta mudança só preservava
+  `pageSize`) — chamando `loadProducts()` diretamente se já estava na página 1 (mesmos
+  `sortBy`/`sortDirection` da signal atual) ou `navigateToPage(1, pageSize, sortBy, sortDirection,
+  false)` caso contrário. Confirmado em teste: cadastro estando na página 2 ordenado por
+  `balance desc` recarrega com `getPaged(1, pageSize, 'balance', 'desc')` e a URL final inclui
+  `sortBy=balance&sortDirection=desc`.
+- **Notas**: mesmo padrão em `InvoicesListPage.openCreateDialog().afterClosed()` — reconfirmado em
+  teste com uma ordenação não-default (`status asc`) ativa no momento da criação.
+
+#### Preservação de contexto ao abrir/voltar do detalhe de uma nota
+
+`InvoicesListPage.openInvoice(id)` passa o `queryParams` atual da listagem
+(`page`/`pageSize`/`sortBy`/`sortDirection`) como **router navigation `state`** (não como parte da
+URL de `/notas/:id`, que permanece uma rota "limpa"): `router.navigate(['/notas', id], { state: {
+listQueryParams: { ...route.snapshot.queryParams } } })`. `InvoiceDetailPage` lê esse `state` uma
+única vez na construção (`history.state.listQueryParams ?? {}`) e vincula o resultado ao link
+"Voltar para a listagem" via `[queryParams]`. Isso restaura exatamente a página/tamanho/ordenação de
+onde o usuário veio ao clicar "Voltar", sem afetar a rota direta de detalhe (`/notas/5` acessada por
+link direto/bookmark/refresh simplesmente não tem `state`, então o link volta para `/notas` puro, que
+já normaliza para os defaults) nem o fluxo de impressão (inalterado).
+
+#### Testes
+
+- `page-items.spec.ts` (novo): função pura `buildPageItems` — zero páginas, uma página, poucas
+  páginas (sem elipse), muitas páginas (elipse no início/meio/fim, com os quatro exemplos do pedido
+  conferidos byte a byte), preenchimento de lacuna de uma única página, limite superior do número de
+  itens mesmo com 1000 páginas, e entrada defensiva (`currentPage` fora do intervalo).
+- `pagination.spec.ts`: mantém a cobertura anterior (resumo, `aria-live`, Anterior/Próxima
+  habilitados/desabilitados, `totalCount = 0`, `loading`) e adiciona: um botão por página sem elipse
+  quando o total cabe; colapso com elipses no meio de um intervalo longo; nenhum botão de página
+  para resultado vazio; `aria-current="page"` + `disabled` na página atual sem emitir `pageChange`
+  ao clicar nela; ausência de `aria-current` nas demais; emissão de `pageChange` com o número
+  clicado; todos os botões de página desabilitados durante `loading`; elipse não é `<button>` e tem
+  `aria-hidden="true"`.
+- `products.service.spec.ts`/`invoices.service.spec.ts`: `getPaged` agora recebendo/enviando
+  `sortBy`/`sortDirection` como query params, mantendo os testes dos métodos antigos inalterados.
+- `products-page.spec.ts`/`invoices-list-page.spec.ts` (via `RouterTestingHarness` e
+  `Router`/`Location` reais, como antes): toda a suíte de paginação pré-existente foi mantida e
+  atualizada para incluir `sortBy`/`sortDirection` em cada asserção de URL/chamada ao serviço (nenhum
+  teste foi enfraquecido — apenas passou a também afirmar os dois novos parâmetros), mais os cenários
+  novos de ordenação: defaults corretos ao abrir sem query params; clique em nova coluna define `asc`
+  + reset `page=1` preservando `pageSize`; segundo clique na mesma coluna alterna a direção; leitura
+  direta de `sortBy`/`sortDirection` válidos na URL; normalização de `sortBy`/`sortDirection`
+  inválidos aos defaults sem loop (chamada ao serviço exatamente uma vez); `aria-sort` correto por
+  coluna (ativa vs. demais); indicador `▲`/`▼` no texto do botão; e, no cadastro via modal, reload
+  preservando a ordenação vigente (não apenas `pageSize`). Também cobrem explicitamente: clicar num
+  cabeçalho de ordenação não aciona a navegação de linha da nota (nenhuma chamada a `router.navigate`
+  para `/notas/:id`); e a navegação para o detalhe carrega o `state.listQueryParams` com o
+  `page`/`pageSize`/`sortBy`/`sortDirection` vigentes.
+- `invoice-detail-page.spec.ts`: dois testes novos para o link "Voltar para a listagem" — sem
+  `history.state` (link aponta para `/notas` puro) e com `state.listQueryParams` populado (o `href`
+  do link inclui os quatro parâmetros preservados). Todos os testes pré-existentes de impressão
+  (spinner, chamada única, mensagens de erro por `errorCode`, `window.print()` só após sucesso)
+  permanecem inalterados e passando — nenhuma regressão no fluxo de impressão.
+- **Reconferência com o backend**: os nomes de campo (`code`/`description`/`balance` para Produtos;
+  `number`/`createdAtUtc`/`itemsCount`/`status` para Notas), os defaults (`code asc` / `number desc`)
+  e `errorCode = "INVALID_SORT"` foram confirmados diretamente no código do backend
+  (`ProductService.GetPagedAsync`/`InvoiceService.GetPagedAsync`, ambos já com sua própria suíte de
+  testes de integração passando) antes de escrever os tipos do frontend — nenhuma divergência
+  encontrada, nenhuma pendência de reconferência em aberto.
+- **Limitação conhecida**: a validação visual em navegador real (responsividade desktop/tablet/mobile
+  e a confirmação puramente visual do resultado, além do que a suíte automatizada acima já cobre
+  funcionalmente) não foi executada nesta tarefa — o ambiente não tem automação de navegador
+  disponível.
+
+## Cadastro por modal (Produtos e Notas fiscais)
+
+Os formulários de cadastro de Produtos e Notas fiscais deixaram de ficar permanentemente expostos
+nas páginas de listagem e passaram a abrir em um `MatDialog` (Angular Material, já dependência do
+projeto — nenhuma biblioteca nova foi adicionada).
+
+- **Produtos** (`/produtos`): a página mostra apenas título, descrição, botão "+ Novo produto",
+  seletor de itens por página e a listagem. O formulário foi extraído para
+  `ProductFormDialog` (`features/products/product-form-dialog/`), um componente standalone que
+  injeta `MatDialogRef<ProductFormDialog, Product>` (obrigatório — este componente só existe dentro
+  de um diálogo) e reproduz integralmente a lógica anterior de `ProductsPage` (Reactive Forms,
+  validação de saldo inteiro/não negativo, tratamento de 400/409/503, bloqueio de submit duplicado).
+  `ProductsPage.openCreateDialog()` abre o diálogo com `autoFocus` apontando para o campo Código,
+  `restoreFocus: true` (padrão do `MatDialog`, devolve o foco ao botão "+ Novo produto" ao fechar) e
+  `ariaLabelledBy` referenciando o título do diálogo. No sucesso, o diálogo já notifica
+  (`NotificationService`) e fecha com o produto criado (`dialogRef.close(product)`); a página reage
+  em `afterClosed()` recarregando a página 1 (preservando o `pageSize` atual). Cancelar/fechar
+  (botão "Cancelar", botão de fechar no cabeçalho, Escape, clique no backdrop) fecham sem
+  `dialogRef.close(product)` — nenhum POST é disparado e a listagem/paginação permanecem
+  inalteradas. Durante o envio, `dialogRef.disableClose = true` bloqueia Escape/backdrop e os botões
+  Cancelar/fechar ficam desabilitados, evitando fechamento com o POST em andamento.
+
+- **Notas fiscais** (`/notas`): o botão "+ Nova nota fiscal" deixou de navegar para `/notas/nova` e
+  passou a abrir o mesmo formulário em um `MatDialog`. A lógica (FormArray de itens, validação de
+  produto duplicado, quantidade inteira positiva, tratamento de 400/404/409/503) foi extraída para
+  `InvoiceFormComponent` (`features/invoices/invoice-form/invoice-form.ts`), com **uma única
+  implementação reutilizada em dois contextos**, diferenciados por injeção opcional de
+  `MatDialogRef`:
+  - Como rota (`/notas/nova`, via `InvoiceFormPage`, agora um wrapper fino que só renderiza o
+    título da página e o link "Voltar para a listagem" ao redor de `<app-invoice-form />`): não há
+    `MatDialogRef` no injetor, então o componente não renderiza cabeçalho/botão fechar/"Cancelar" e,
+    no sucesso, mantém o comportamento anterior — notifica e `router.navigate(['/notas'])`.
+  - Como diálogo (aberto por `InvoicesListPage.openCreateDialog()`, com `autoFocus` no botão
+    "Adicionar item", `restoreFocus: true` e `ariaLabelledBy` para o título): o componente detecta
+    `MatDialogRef` injetado e passa a renderizar título "Nova nota fiscal", botão de fechar
+    (`aria-label="Fechar"`) e um botão "Cancelar" adicional; no sucesso, fecha com a nota criada
+    (`dialogRef.close(invoice)`) **sem navegar** (a listagem já está em `/notas`). A página reage em
+    `afterClosed()` recarregando a página 1 preservando o `pageSize`, e como o backend ordena por
+    `Number` decrescente a nota recém-criada aparece primeiro. Cancelar/fechar/Escape/backdrop não
+    criam nota nem alteram listagem/paginação; `dialogRef.disableClose` é ativado durante o envio,
+    bloqueando fechamento acidental.
+
+- **Acessibilidade**: em ambos os diálogos, `mat-dialog-title` com `id` explícito é referenciado via
+  `MatDialogConfig.ariaLabelledBy`; o botão de fechar tem `aria-label="Fechar"`; o container tem
+  `[attr.aria-busy]="submitting()"`; campos inválidos têm `mat-error` associado por
+  `aria-describedby`; o focus trap e a restauração de foco usam o comportamento padrão do
+  `MatDialog` (`restoreFocus: true`); Escape/backdrop fecham normalmente exceto durante o envio
+  (`disableClose`); a ordem de tabulação segue a ordem visual do formulário.
+
+- **Responsividade**: sem `::ng-deep` — a customização usa `panelClass` (`product-form-dialog-panel`
+  / `invoice-form-dialog-panel`) e classes de host próprias. O diálogo de produto usa `width: 640px`
+  (`maxWidth: 95vw`); o de nota usa `width: 860px` (`maxWidth: 95vw`). O conteúdo é rolável
+  (`mat-dialog-content`, que já respeita a altura máxima do viewport do Material) e as ações
+  (Cancelar/Cadastrar/Criar) ficam fixas no rodapé via `position: sticky; bottom: 0;` dentro da área
+  rolável. Em telas estreitas (`max-width: 599px`) as ações empilham em coluna e ocupam a largura
+  total.
+
+- **Testes**: `product-form-dialog.spec.ts` cobre validação, 409 (marca `code` como duplicado),
+  400/503, fechamento por Cancelar/botão fechar sem POST, sucesso fechando com o produto criado, e
+  bloqueio de Cancelar/fechar/reenvio durante o `submitting`. `invoice-form.spec.ts` cobre a mesma
+  lógica de validação/submissão em dois modos (`asDialog: false/true`), incluindo produto duplicado,
+  quantidade inválida, 404/409/503, e — no modo diálogo — presença de título/botão fechar/Cancelar,
+  fechamento sem criar nota, `disableClose` durante o envio e fechamento com a nota criada no
+  sucesso (sem navegação). `products-page.spec.ts`/`invoices-list-page.spec.ts` cobrem a integração
+  ponta a ponta via `MatDialog` real (não mockado): abertura pelo botão, cancelamento preservando
+  página/paginação e devolvendo foco ao botão que abriu o diálogo, e sucesso recarregando a página 1
+  preservando `pageSize`. `invoice-form-page.spec.ts` foi reduzido a um teste de integração da rota
+  `/notas/nova` (título, link de volta, ausência do cabeçalho de diálogo, e um fluxo de sucesso
+  ponta a ponta através do componente real), confirmando que a rota direta continua funcional e
+  compartilha a mesma implementação usada pelo diálogo — sem lógica duplicada.
+
+## Códigos de erro (`errorCode`) e mensagens em português
+
+Todo `ProblemDetails`/`ValidationProblemDetails` de erro de domínio (400/404/409/503) inclui, além
+de `Extensions["traceId"]` (já existente desde a Task 01), `Extensions["errorCode"]`: uma string
+estável, em maiúsculas com `_`, que identifica o cenário sem depender de parsing de `title`/`detail`
+por texto. `title`/`detail` (e as mensagens de `Errors[...]` em `ValidationProblemDetails`) são
+texto livre em português, destinado à exibição direta na UI; `errorCode` é o contrato estável para o
+frontend decidir *o que* fazer (ex.: qual campo destacar, se oferece "tentar novamente"). Nenhuma
+mudança de status HTTP, atomicidade, idempotência (`OperationId`), concorrência (`SELECT ... FOR
+UPDATE`) ou resiliência (pipeline Polly) acompanhou esta tradução — apenas mensagens e a nova
+`Extensions["errorCode"]`, montadas nos mesmos métodos privados (`BuildProblem`/
+`BuildValidationProblem`) de `ProductsController`, `StockController` e `InvoicesController` que já
+existiam para `traceId`.
+
+### `Inventory.Api`
+
+| Exceção de domínio | `errorCode` | HTTP |
+| --- | --- | --- |
+| `ProductValidationException` | `INVALID_PRODUCT` | 400 |
+| `DuplicateProductCodeException` | `DUPLICATE_PRODUCT_CODE` | 409 |
+| `ProductNotFoundException` | `PRODUCT_NOT_FOUND` | 404 |
+| `InvalidPaginationException` (Produtos) | `INVALID_PAGINATION` | 400 |
+| `StockDebitValidationException` | `INVALID_STOCK_DEBIT` | 400 |
+| `InsufficientProductBalanceException` | `INSUFFICIENT_STOCK` | 409 |
+
+Mensagens públicas traduzidas (mantendo os mesmos parâmetros de domínio já capturados pela
+exceção):
+
+- `Product.Create`: `"Code is required."` → `"O código é obrigatório."`; `"Description is
+  required."` → `"A descrição é obrigatória."`; `"Balance must be greater than or equal to
+  zero."` → `"O saldo deve ser maior ou igual a zero."` (itens de `Errors["product"]`).
+- `DuplicateProductCodeException`: `"Product code '{code}' is already registered."` →
+  `"Já existe um produto cadastrado com este código."`.
+- `ProductNotFoundException`: `"Product '{id}' was not found."` → `"Produto não encontrado."`.
+- `InsufficientProductBalanceException` — formato exato, consumido literalmente pelo frontend:
+  `"Product '{code}' has insufficient balance. Available: {available}, requested:
+  {requested}."` → `"O produto \"{code}\" não possui saldo suficiente. Disponível: {available};
+  solicitado: {requested}."` (aspas retas duplas ao redor do código; `;` antes de "solicitado").
+- `StockDebitService.ValidateRequest`: `"OperationId is required."` → `"O OperationId é
+  obrigatório."`; `"At least one item is required."` → `"É necessário informar ao menos um
+  item."`; `"ProductId must be greater than zero."` → `"O ProductId deve ser maior que
+  zero."`; `"Duplicate product '{id}' in the same debit request."` → `"Produto '{id}' duplicado
+  na mesma requisição de baixa."`; `"Quantity for product '{id}' must be greater than
+  zero."` → `"A quantidade do produto '{id}' deve ser um número inteiro maior que zero."`.
+- Paginação (`ProductService.GetPagedAsync`, secundário — não fazia parte da lista de `errorCode`
+  pedida, mas as mensagens acompanham o mesmo padrão): mensagens de `PageNumber`/`PageSize`
+  traduzidas para português; `errorCode = INVALID_PAGINATION`.
+
+### `Billing.Api`
+
+| Exceção de domínio | `errorCode` | HTTP |
+| --- | --- | --- |
+| `InvoiceValidationException` | `INVALID_INVOICE` | 400 |
+| `InvoiceNotFoundException` | `INVOICE_NOT_FOUND` | 404 |
+| `InvoiceProductNotFoundException` | `PRODUCT_NOT_FOUND` | 404 |
+| `DuplicateInvoiceNumberException` | `DUPLICATE_INVOICE_NUMBER` | 409 |
+| `InvalidPaginationException` (Notas) | `INVALID_PAGINATION` | 400 |
+| `InvoiceAlreadyClosedException` | `INVOICE_ALREADY_CLOSED` | 409 |
+| `InsufficientStockBalanceException` | `INSUFFICIENT_STOCK` | 409 |
+| `InventoryServiceUnavailableException` (`Reason = Unavailable`) | `INVENTORY_UNAVAILABLE` | 503 |
+| `InventoryServiceUnavailableException` (`Reason = Timeout`) | `INVENTORY_TIMEOUT` | 503 |
+
+`InventoryServiceUnavailableException` ganhou a propriedade somente-leitura `Reason`
+(`InventoryUnavailableReason.Unavailable` — padrão — ou `.Timeout`), preenchida pelos dois clientes
+HTTP (`InventoryProductClient`/`InventoryStockClient`) exatamente nos pontos onde hoje já se
+distinguia timeout de outras falhas na mensagem de log/exceção: `catch (TimeoutRejectedException)`
+e o `TaskCanceledException` do `HttpClient.Timeout` de segurança usam `Reason.Timeout`; conexão
+recusada (`HttpRequestException`), circuito aberto (`BrokenCircuitException`), status HTTP
+inesperado e resposta vazia/inválida usam o padrão `Reason.Unavailable`. `InvoicesController` mapeia
+esse `Reason` para `errorCode` em um único ponto (`ErrorCodeFor`), sem alterar o status HTTP (503 em
+ambos os casos) nem nenhum estágio do pipeline Polly (timeout total/por tentativa, retry, circuit
+breaker continuam exatamente como na Task 11).
+
+Não existe hoje, como cenário de domínio separado, um "conflito de impressão" distinto de saldo
+insuficiente/nota fechada — por isso nenhum `errorCode` do tipo `INVOICE_PRINT_CONFLICT` foi
+adicionado; os dois conflitos possíveis na impressão (`InvoiceAlreadyClosedException`,
+`InsufficientStockBalanceException`) já têm `errorCode` próprio na tabela acima.
+
+Mensagens públicas traduzidas:
+
+- `Invoice.Create`: `"At least one item is required."` → `"É necessário informar ao menos um
+  item."`.
+- `InvoiceItem.Create`: `"Quantity for product '{code}' must be a positive integer."` → `"A
+  quantidade do produto '{code}' deve ser um número inteiro maior que zero."`; mensagens
+  equivalentes para código/descrição do snapshot ausentes.
+- `InvoiceService.CreateAsync` (validação de quantidade por item, antes de consultar o Estoque):
+  mesmo texto acima, mantendo o parâmetro (`ProductId` em vez do código, pois o snapshot ainda não
+  foi capturado nesse ponto).
+- `InvoiceNotFoundException`: `"Invoice '{id}' was not found."` → `"Nota fiscal não encontrada."`.
+- `InvoiceProductNotFoundException`: `"Product '{id}' was not found in the Inventory
+  service."` → `"Produto não encontrado."`.
+- `DuplicateInvoiceNumberException`: `"Invoice number conflict."` → `"Conflito na numeração da
+  nota fiscal. Tente novamente."`.
+- `InvoiceAlreadyClosedException`: `"Invoice '{id}' is already closed."` → `"Esta nota fiscal já
+  foi fechada."`.
+- `InventoryProductClient`/`InventoryStockClient` (mensagens de infraestrutura, nunca expõem tipo
+  .NET, SQL ou detalhe do Polly): `"The Inventory service is unavailable."` /
+  `"...circuit breaker is open."` / `"...responded with unexpected status {code}."` /
+  `"...returned an invalid/empty response."` → unificadas em `"Não foi possível consultar o
+  serviço de estoque."` (`errorCode = INVENTORY_UNAVAILABLE`); `"The Inventory service request
+  timed out."` → `"O serviço de estoque demorou mais que o esperado para responder."`
+  (`errorCode = INVENTORY_TIMEOUT`).
+- `InventoryStockClient` — fallback quando Inventory retorna 409 sem `detail` legível:
+  `"The Inventory service reported an insufficient stock balance."` → `"Não foi possível imprimir
+  a nota fiscal porque não há saldo suficiente."`. No caminho normal (Inventory disponível), o
+  `detail` propagado é o texto exato de `InsufficientProductBalanceException` do Inventory (ver
+  tabela acima), repassado sem modificação por `InvoiceStatement`/`InsufficientStockBalanceException`.
+- Paginação (`InvoiceService.GetPagedAsync`, mesmo racional do Inventory): mensagens traduzidas;
+  `errorCode = INVALID_PAGINATION`.
+
+### Exemplo de resposta — saldo insuficiente na impressão (`POST /api/invoices/{id}/print`)
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+  "title": "Saldo de estoque insuficiente.",
+  "status": 409,
+  "detail": "O produto \"SKU-PRINT-3\" não possui saldo suficiente. Disponível: 2; solicitado: 5.",
+  "instance": "/api/invoices/42/print",
+  "traceId": "0HN...",
+  "errorCode": "INSUFFICIENT_STOCK"
+}
+```
+
+### Testes
+
+- `tests/Inventory.Tests/ProductDomainTests.cs`: mensagens em português de `ProductValidationException`
+  (`Errors`) e formato exato de `InsufficientProductBalanceException.Message` (aspas retas + `;`).
+- `tests/Billing.Tests/InvoiceDomainTests.cs`: mensagem em português de `InvoiceValidationException`
+  para nota sem itens.
+- `tests/Billing.Tests/InventoryResilienceClientTests.cs`: `InventoryServiceUnavailableException.Reason`
+  (`Unavailable` no esgotamento de retries por 503, `Timeout` no esgotamento por timeout de
+  tentativa) e mensagem em português contendo "demorou mais que o esperado".
+- `tests/Billing.Tests/InvoicesPrintResilienceApiTests.cs`: `errorCode` (`INVENTORY_UNAVAILABLE`/
+  `INVENTORY_TIMEOUT`) através do endpoint HTTP completo, mantendo as asserções pré-existentes de
+  status 503, `traceId`, contagem exata de tentativas HTTP e nota permanecendo `Open`.
+- `tests/Billing.Tests/InvoicesInventoryUnavailableApiTests.cs`: `errorCode = INVENTORY_UNAVAILABLE`,
+  `traceId` presente e ausência de termos técnicos (`Exception`, `StackTrace`) no corpo do erro na
+  criação de nota com Estoque indisponível.
+- `tests/Billing.Tests/InvoicesPrintRealInventoryIntegrationTests.cs`
+  (`Print_With_Insufficient_Balance_Returns_Conflict_And_Keeps_Invoice_Open_And_Balance_Unchanged`):
+  cenário central desta mudança — `errorCode = INSUFFICIENT_STOCK`, `traceId` presente, `detail` no
+  formato exato acima (produzido pelo Inventory.Api real e repassado pelo Billing.Api real através de
+  `InventoryStockClient`), e ausência de `StackTrace`/`Npgsql` no corpo — sem alterar nenhuma das
+  asserções pré-existentes de status, estado `Open`/saldo inalterado.
+
+Todas as suítes de idempotência (`OperationId`), concorrência (`SELECT ... FOR UPDATE` em
+`StockConcurrencyApiTests`) e resiliência (circuit breaker, retry, timeout em
+`InventoryResilienceClientTests`/`InvoicesPrintResilienceApiTests`) permanecem com as mesmas
+asserções de comportamento (contagem de tentativas, número de debits aplicados, estado final)
+já existentes antes desta mudança — apenas mensagens/`errorCode` foram adicionados por cima.
+
+## Saldo inicial obrigatório maior que zero (cadastro de produtos)
+
+`Product.Create` (`Inventory.Api`) passa a exigir `balance >= 1` (antes: `balance >= 0`),
+lançando `ProductValidationException` com a mensagem `"O saldo inicial deve ser um número
+inteiro maior que zero."` para `balance` igual a `0` ou negativo. Reaproveita o `errorCode`
+já existente `INVALID_PRODUCT` — nenhum código novo foi criado.
+
+- **Saldo inicial vs. saldo atual**: a regra vale somente para a criação do produto.
+  `Product.Debit` (baixa de estoque) continua podendo levar o saldo **atual** de um produto já
+  existente exatamente a zero — apenas nunca abaixo de zero. O cenário "produto criado com
+  saldo `1`, baixa de `1`, saldo final `0`" tem teste de regressão dedicado
+  (`Create_With_Balance_One_Then_Debit_One_Reaches_Zero`).
+- **Constraint de banco inalterada**: `CK_products_balance_non_negative`
+  (`"Balance" >= 0`) permanece exatamente como estava, pois já representa corretamente a regra
+  de saldo atual. Não foi criada — nem seria correto criar — uma constraint `Balance > 0`, o que
+  impediria uma baixa válida de consumir a última unidade de um produto.
+- **Nenhuma migration**: a regra é exclusiva da camada de domínio (`Product.Create`), não do
+  schema. Produtos pré-existentes com saldo `0` continuam existindo sem qualquer ajuste.
+- **Frontend** (`product-form-dialog`): o campo de saldo inicial passa a ser um
+  `FormControl<number | null>` iniciado em `null` (vazio), em vez de `0` — decisão deliberada,
+  já que `0` deixou de ser um valor válido e pré-preenchê-lo daria a falsa impressão de que o
+  formulário já está pronto para envio. Usa `Validators.min(1)` (antes `min(0)`) e o
+  `integerValidator` já existente para decimais. O botão "Cadastrar produto" passa a ficar
+  desabilitado enquanto o formulário for inválido (`[disabled]="submitting() || form.invalid"`),
+  no mesmo padrão já usado em `invoice-form.html`.
+- **Testes adicionados/ajustados**: `ProductDomainTests` (saldo `0` agora rejeitado; saldo `1`
+  aceito; regressão de baixa até zero) e `ProductsApiTests` (novo caso `balance=0` no teste
+  parametrizado de dados inválidos; teste dedicado confirmando `400`, `errorCode=INVALID_PRODUCT`,
+  `traceId`, mensagem em português e ausência de persistência para `balance` `0`/`-1`; teste
+  confirmando `201` e persistência para `balance=1`); `product-form-dialog.spec.ts` (campo vazio
+  inicial, saldo `0` rejeitado com botão desabilitado, saldo `1` habilita o botão).
+

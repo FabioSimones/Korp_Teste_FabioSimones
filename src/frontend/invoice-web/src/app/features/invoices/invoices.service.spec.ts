@@ -3,7 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 
 import { environment } from '../../../environments/environment';
-import { CreateInvoiceRequest, Invoice } from './models/invoice';
+import { PagedResponse } from '../../shared/pagination/paged-response';
+import { CreateInvoiceRequest, Invoice, InvoiceSummary } from './models/invoice';
 import { InvoicesService } from './invoices.service';
 
 describe('InvoicesService', () => {
@@ -44,6 +45,42 @@ describe('InvoicesService', () => {
     req.flush([sampleInvoice]);
 
     expect(result).toEqual([sampleInvoice]);
+  });
+
+  it('should GET a paged invoice list with pageNumber/pageSize/sortBy/sortDirection as query params', () => {
+    const response: PagedResponse<InvoiceSummary> = {
+      items: [
+        {
+          id: 3,
+          number: 3,
+          status: 'Open',
+          createdAtUtc: '2026-08-19T12:00:00Z',
+          closedAtUtc: null,
+          itemsCount: 1,
+        },
+      ],
+      pageNumber: 1,
+      pageSize: 2,
+      totalCount: 3,
+      totalPages: 2,
+      hasPreviousPage: false,
+      hasNextPage: true,
+    };
+
+    let result: PagedResponse<InvoiceSummary> | undefined;
+    service.getPaged(1, 2, 'createdAtUtc', 'asc').subscribe((value) => (result = value));
+
+    const req = httpMock.expectOne(
+      `${baseUrl}/paged?pageNumber=1&pageSize=2&sortBy=createdAtUtc&sortDirection=asc`,
+    );
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('pageNumber')).toBe('1');
+    expect(req.request.params.get('pageSize')).toBe('2');
+    expect(req.request.params.get('sortBy')).toBe('createdAtUtc');
+    expect(req.request.params.get('sortDirection')).toBe('asc');
+    req.flush(response);
+
+    expect(result).toEqual(response);
   });
 
   it('should GET a single invoice by id from Billing.Api', () => {

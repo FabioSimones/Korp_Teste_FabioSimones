@@ -189,12 +189,12 @@ public class StockDebitService : IStockDebitService
 
         if (request.OperationId == Guid.Empty)
         {
-            errors.Add("OperationId is required.");
+            errors.Add("O OperationId é obrigatório.");
         }
 
         if (request.Items is not { Count: > 0 })
         {
-            errors.Add("At least one item is required.");
+            errors.Add("É necessário informar ao menos um item.");
         }
         else
         {
@@ -204,16 +204,16 @@ public class StockDebitService : IStockDebitService
             {
                 if (item.ProductId <= 0)
                 {
-                    errors.Add("ProductId must be greater than zero.");
+                    errors.Add("O ProductId deve ser maior que zero.");
                 }
                 else if (!seenProductIds.Add(item.ProductId))
                 {
-                    errors.Add($"Duplicate product '{item.ProductId}' in the same debit request.");
+                    errors.Add($"Produto '{item.ProductId}' duplicado na mesma requisição de baixa.");
                 }
 
                 if (item.Quantity <= 0)
                 {
-                    errors.Add($"Quantity for product '{item.ProductId}' must be greater than zero.");
+                    errors.Add($"A quantidade do produto '{item.ProductId}' deve ser um número inteiro maior que zero.");
                 }
             }
         }

@@ -1,0 +1,179 @@
+<div class="invoice-form" [class.invoice-form--dialog]="isDialog" [attr.aria-busy]="submitting()">
+  @if (isDialog) {
+    <div class="invoice-form__dialog-header">
+      <h2 mat-dialog-title id="invoice-form-dialog-title" class="invoice-form__dialog-title">
+        Nova nota fiscal
+      </h2>
+      <button
+        mat-icon-button
+        type="button"
+        class="invoice-form__dialog-close"
+        aria-label="Fechar"
+        [disabled]="submitting()"
+        (click)="cancel()"
+      >
+        <mat-icon aria-hidden="true">close</mat-icon>
+      </button>
+    </div>
+  }
+
+  @if (isDialog) {
+    <div mat-dialog-content class="invoice-form__body invoice-form__body--dialog">
+      <ng-container [ngTemplateOutlet]="bodyContent"></ng-container>
+    </div>
+  } @else {
+    <div class="invoice-form__body">
+      <ng-container [ngTemplateOutlet]="bodyContent"></ng-container>
+    </div>
+  }
+</div>
+
+<ng-template #bodyContent>
+  @if (productsLoading()) {
+    <div class="invoice-form__state" role="status">
+      <mat-progress-spinner diameter="32" mode="indeterminate"></mat-progress-spinner>
+      <span>Carregando produtos disponíveis...</span>
+    </div>
+  } @else if (productsError()) {
+    <div class="invoice-form__state" role="alert">
+      <p>{{ productsError() }}</p>
+      <button mat-stroked-button type="button" (click)="reloadProducts()">Tentar novamente</button>
+    </div>
+  } @else if (products().length === 0) {
+    <p class="invoice-form__empty">
+      Nenhum produto cadastrado. Cadastre produtos antes de criar uma nota.
+    </p>
+  } @else {
+    <form
+      class="invoice-form__form"
+      [formGroup]="form"
+      (ngSubmit)="submit()"
+      novalidate
+      aria-label="Formulário de cadastro de nota"
+    >
+      <h2 class="invoice-form__items-title">Itens da nota</h2>
+
+      <div class="invoice-form__items" formArrayName="items">
+        @if (itemsValue().length === 0) {
+          <p class="invoice-form__empty">Nenhum item adicionado. Clique em "Adicionar item".</p>
+        }
+
+        @for (item of items.controls; track item; let i = $index) {
+          <div class="invoice-form__item" [formGroupName]="i">
+            <span class="invoice-form__item-index">{{ i + 1 }}</span>
+
+            <mat-form-field appearance="outline" class="invoice-form__item-product">
+              <mat-label>Produto</mat-label>
+              <mat-select
+                formControlName="productId"
+                [attr.aria-label]="'Produto do item ' + (i + 1)"
+                [attr.aria-describedby]="'invoice-form-item-' + i + '-product-error'"
+              >
+                @for (product of products(); track product.id) {
+                  <mat-option [value]="product.id">
+                    {{ product.code }} - {{ product.description }} (saldo: {{ product.balance }})
+                  </mat-option>
+                }
+              </mat-select>
+              @if (
+                item.controls.productId.hasError('required') && item.controls.productId.touched
+              ) {
+                <mat-error [id]="'invoice-form-item-' + i + '-product-error'">
+                  Selecione um produto.
+                </mat-error>
+              } @else if (isDuplicate(i)) {
+                <mat-error [id]="'invoice-form-item-' + i + '-product-error'">
+                  Este produto já foi adicionado nesta nota.
+                </mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="invoice-form__item-quantity">
+              <mat-label>Quantidade</mat-label>
+              <input
+                matInput
+                type="number"
+                formControlName="quantity"
+                min="1"
+                step="1"
+                [attr.max]="balanceFor(item.controls.productId.value)"
+                [attr.aria-label]="'Quantidade do item ' + (i + 1)"
+                [attr.aria-describedby]="'invoice-form-item-' + i + '-quantity-error'"
+              />
+              @if (item.controls.quantity.invalid && item.controls.quantity.touched) {
+                <mat-error [id]="'invoice-form-item-' + i + '-quantity-error'">
+                  @if (item.controls.quantity.hasError('required')) {
+                    Informe a quantidade.
+                  } @else if (item.controls.quantity.hasError('min')) {
+                    A quantidade deve ser maior que zero.
+                  } @else if (item.controls.quantity.hasError('integer')) {
+                    A quantidade deve ser um número inteiro.
+                  } @else if (item.controls.quantity.hasError('noBalance')) {
+                    Produto sem saldo disponível.
+                  } @else if (item.controls.quantity.hasError('exceedsBalance')) {
+                    A quantidade não pode ser maior que o saldo disponível ({{
+                      item.controls.quantity.getError('exceedsBalance').balance
+                    }}).
+                  }
+                </mat-error>
+              }
+            </mat-form-field>
+
+            <span class="invoice-form__item-balance">
+              @if (balanceFor(item.controls.productId.value); as balance) {
+                Saldo disponível: {{ balance }}
+              }
+            </span>
+
+            <button
+              mat-icon-button
+              type="button"
+              color="warn"
+              [attr.aria-label]="'Remover item ' + (i + 1)"
+              (click)="removeItem(i)"
+            >
+              <mat-icon>delete</mat-icon>
+            </button>
+          </div>
+        }
+      </div>
+
+      <div class="invoice-form__add-item">
+        <button mat-stroked-button type="button" (click)="addItem()">
+          <mat-icon aria-hidden="true">add</mat-icon>
+          Adicionar item
+        </button>
+      </div>
+
+      @if (formError()) {
+        <p class="invoice-form__form-error" role="alert">{{ formError() }}</p>
+      }
+
+      <div class="invoice-form__form-actions">
+        @if (isDialog) {
+          <button mat-stroked-button type="button" [disabled]="submitting()" (click)="cancel()">
+            Cancelar
+          </button>
+        }
+        <button
+          mat-flat-button
+          color="primary"
+          type="submit"
+          [disabled]="submitting() || form.invalid"
+          class="invoice-form__submit"
+        >
+          @if (submitting()) {
+            <mat-progress-spinner
+              diameter="18"
+              mode="indeterminate"
+              aria-hidden="true"
+            ></mat-progress-spinner>
+            <span>Cadastrando...</span>
+          } @else {
+            <span>{{ isDialog ? 'Criar nota' : 'Cadastrar nota' }}</span>
+          }
+        </button>
+      </div>
+    </form>
+  }
+</ng-template>

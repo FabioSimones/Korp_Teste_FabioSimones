@@ -1,3 +1,5 @@
+using Billing.Api.Common;
+
 namespace Billing.Api.Features.Invoices;
 
 /// <summary>
@@ -30,4 +32,14 @@ public interface IInvoiceService
     /// <exception cref="InsufficientStockBalanceException">Inventory reported an insufficient balance for one or more items.</exception>
     /// <exception cref="InventoryServiceUnavailableException">Inventory service unreachable or failing.</exception>
     Task<InvoiceResponse> PrintAsync(int id, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lists invoices ordered deterministically by <c>Number</c> descending
+    /// then <c>Id</c>, returning a single page of summaries. Never loads the
+    /// full table into memory, and never calls the Inventory service (it is
+    /// a read of Billing's own database only).
+    /// </summary>
+    /// <exception cref="InvalidPaginationException">Page number less than 1, or page size outside [1, 100].</exception>
+    /// <exception cref="InvalidSortException">Unsupported <c>sortBy</c> field or <c>sortDirection</c> other than asc/desc.</exception>
+    Task<PagedResponse<InvoiceSummaryResponse>> GetPagedAsync(InvoicesPageQuery query, CancellationToken cancellationToken);
 }

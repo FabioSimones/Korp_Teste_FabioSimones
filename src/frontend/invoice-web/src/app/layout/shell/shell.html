@@ -1,45 +1,29 @@
-<mat-sidenav-container class="shell">
-  <mat-sidenav
-    #drawer
-    class="shell__sidenav"
-    [mode]="isHandset() ? 'over' : 'side'"
-    [opened]="!isHandset()"
-    [fixedInViewport]="isHandset()"
-  >
-    <nav aria-label="Navegação principal">
-      <mat-nav-list>
+<div class="app-shell">
+  <header class="app-shell__topbar">
+    <div class="app-shell__topbar-inner">
+      <a routerLink="/produtos" class="app-shell__brand">
+        <span class="app-shell__brand-name">KORP ERP</span>
+        <span class="app-shell__brand-tag">Fiscal</span>
+      </a>
+
+      <nav class="app-shell__nav" aria-label="Navegação principal">
         @for (link of navLinks; track link.path) {
           <a
-            mat-list-item
+            class="app-shell__nav-link"
             [routerLink]="link.path"
-            routerLinkActive="active-link"
-            (click)="isHandset() && drawer.close()"
+            routerLinkActive="app-shell__nav-link--active"
+            ariaCurrentWhenActive="page"
           >
-            <mat-icon matListItemIcon>{{ link.icon }}</mat-icon>
-            <span matListItemTitle>{{ link.label }}</span>
+            {{ link.label }}
           </a>
         }
-      </mat-nav-list>
-    </nav>
-  </mat-sidenav>
+      </nav>
+    </div>
+  </header>
 
-  <mat-sidenav-content>
-    <mat-toolbar color="primary" class="shell__toolbar">
-      @if (isHandset()) {
-        <button
-          type="button"
-          mat-icon-button
-          aria-label="Abrir menu de navegação"
-          (click)="drawer.toggle()"
-        >
-          <mat-icon>menu</mat-icon>
-        </button>
-      }
-      <span class="shell__title">Korp - Emissão de Notas</span>
-    </mat-toolbar>
-
-    <main class="shell__content" id="main-content">
+  <main class="app-shell__content" id="main-content">
+    <div class="app-shell__paper">
       <router-outlet />
-    </main>
-  </mat-sidenav-content>
-</mat-sidenav-container>
+    </div>
+  </main>
+</div>

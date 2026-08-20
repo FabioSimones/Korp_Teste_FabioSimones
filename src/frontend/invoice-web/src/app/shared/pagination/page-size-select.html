@@ -1,0 +1,13 @@
+<div class="page-size-select">
+  <label for="page-size-select">Itens por página</label>
+  <select
+    id="page-size-select"
+    class="page-size-select__control"
+    [disabled]="loading"
+    (change)="onPageSizeChange($event)"
+  >
+    @for (option of pageSizeOptions; track option) {
+      <option [value]="option" [selected]="option === pageSize">{{ option }}</option>
+    }
+  </select>
+</div>

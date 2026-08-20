@@ -13,7 +13,7 @@ public class InvoiceDomainTests
     {
         // Act & Assert
         var ex = Assert.Throws<InvoiceValidationException>(() => Invoice.Create([]));
-        Assert.Contains(ex.Errors, e => e.Contains("at least one item", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(ex.Errors, e => e.Contains("ao menos um item", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

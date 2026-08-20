@@ -1,3 +1,4 @@
+using Inventory.Api.Common;
 using Inventory.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -8,6 +9,10 @@ namespace Inventory.Api.Features.Products;
 public class ProductService : IProductService
 {
     private const string UniqueViolationSqlState = "23505";
+    private const int MinPageSize = 1;
+    private const int MaxPageSize = 100;
+    private const string DefaultSortBy = "code";
+    private const string DefaultSortDirection = "asc";
 
     private readonly InventoryDbContext _dbContext;
 
@@ -63,6 +68,72 @@ public class ProductService : IProductService
             .FirstOrDefaultAsync(cancellationToken);
 
         return product ?? throw new ProductNotFoundException(id);
+    }
+
+    public async Task<PagedResponse<ProductResponse>> GetPagedAsync(ProductsPageQuery query, CancellationToken cancellationToken)
+    {
+        var errors = new List<string>();
+
+        if (query.PageNumber < 1)
+        {
+            errors.Add("O número da página deve ser maior ou igual a 1.");
+        }
+
+        if (query.PageSize < MinPageSize || query.PageSize > MaxPageSize)
+        {
+            errors.Add($"O tamanho da página deve estar entre {MinPageSize} e {MaxPageSize}.");
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new InvalidPaginationException(errors);
+        }
+
+        var sortBy = (query.SortBy ?? DefaultSortBy).Trim().ToLowerInvariant();
+        var sortDirection = (query.SortDirection ?? DefaultSortDirection).Trim().ToLowerInvariant();
+
+        var sortErrors = new List<string>();
+
+        if (sortBy is not ("code" or "description" or "balance"))
+        {
+            sortErrors.Add("O campo de ordenação informado não é válido.");
+        }
+
+        if (sortDirection is not ("asc" or "desc"))
+        {
+            sortErrors.Add("A direção de ordenação deve ser 'asc' ou 'desc'.");
+        }
+
+        if (sortErrors.Count > 0)
+        {
+            throw new InvalidSortException(sortErrors);
+        }
+
+        var ascending = sortDirection == "asc";
+
+        var totalCount = await _dbContext.Products
+            .AsNoTracking()
+            .CountAsync(cancellationToken);
+
+        IQueryable<Product> orderedQuery = (sortBy, ascending) switch
+        {
+            ("code", true) => _dbContext.Products.AsNoTracking().OrderBy(p => p.Code).ThenBy(p => p.Id),
+            ("code", false) => _dbContext.Products.AsNoTracking().OrderByDescending(p => p.Code).ThenByDescending(p => p.Id),
+            ("description", true) => _dbContext.Products.AsNoTracking().OrderBy(p => p.Description).ThenBy(p => p.Id),
+            ("description", false) => _dbContext.Products.AsNoTracking().OrderByDescending(p => p.Description).ThenByDescending(p => p.Id),
+            ("balance", true) => _dbContext.Products.AsNoTracking().OrderBy(p => p.Balance).ThenBy(p => p.Code).ThenBy(p => p.Id),
+            ("balance", false) => _dbContext.Products.AsNoTracking().OrderByDescending(p => p.Balance).ThenBy(p => p.Code).ThenBy(p => p.Id),
+            // Unreachable: sortBy/ascending were already validated above.
+            _ => throw new InvalidSortException(["O campo de ordenação informado não é válido."]),
+        };
+
+        var items = await orderedQuery
+            .Skip((query.PageNumber - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .Select(p => new ProductResponse(p.Id, p.Code, p.Description, p.Balance))
+            .ToListAsync(cancellationToken);
+
+        return PagedResponse<ProductResponse>.Create(items, query.PageNumber, query.PageSize, totalCount);
     }
 
     private static ProductResponse ToResponse(Product product) =>

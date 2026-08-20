@@ -10,7 +10,7 @@ public class StockDebitValidationException : Exception
     public IReadOnlyCollection<string> Errors { get; }
 
     public StockDebitValidationException(IEnumerable<string> errors)
-        : base("Invalid stock debit request.")
+        : base("Requisição de baixa de estoque inválida.")
     {
         Errors = errors.ToList();
     }
